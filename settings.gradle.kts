@@ -6,6 +6,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hdr-block-zygisk"
+rootProject.name = "disable-hdr-zygisk"
 include(":native")
 include(":hookdex")
