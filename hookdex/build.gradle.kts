@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.hdrblock.hook"
+    namespace = "com.disablehdr.hook"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.hdrblock.hook"
+        applicationId = "com.disablehdr.hook"
         minSdk = 27
         targetSdk = 36
         // Keep this a plain single classes.dex so the native module can
