@@ -7,8 +7,8 @@
  * module, same approach used by HMA-OSS's Zygisk-only branch.
  */
 
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <android/log.h>
