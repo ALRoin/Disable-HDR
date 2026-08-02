@@ -1,6 +1,10 @@
 #!/system/bin/sh
 
-ui_print "- Installing HDR Block Zygisk module"
+ui_print "- Installing Disable HDR module"
+if [ ! -f "$MODPATH/targets.txt" ]; then
+  touch "$MODPATH/targets.txt"
+fi
+set_perm "$MODPATH/targets.txt" 0 0 0644
 
 set_perm "$MODPATH/classes.dex" 0 0 0644
 
