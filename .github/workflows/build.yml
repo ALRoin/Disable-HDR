@@ -1,0 +1,71 @@
+name: Build HDR Block Zygisk Module
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}   # lets you trigger a build manually from the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew package.sh
+
+      - name: Build native module (.so, all ABIs)
+        run: ./gradlew :native:externalNativeBuildRelease --stacktrace
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+      - name: Build hook dex (HdrHook + YAHFA)
+        run: ./gradlew :hookdex:extractHookDex --stacktrace
+
+      - name: Package flashable zip
+        run: |
+          OUT=dist/hdr_block
+          rm -rf "$OUT"
+          mkdir -p "$OUT/zygisk"
+          cp -r flashable_module/. "$OUT/"
+
+          NATIVE_LIBS_DIR="native/build/intermediates/ndkBuild/release/obj/local"
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            src="$NATIVE_LIBS_DIR/$abi/libhdr_block.so"
+            if [ -f "$src" ]; then
+              cp "$src" "$OUT/zygisk/$abi.so"
+              echo "copied $abi.so"
+            else
+              echo "WARNING: missing $src"
+            fi
+          done
+
+          cp hookdex/build/hookdex-out/classes.dex "$OUT/classes.dex"
+
+          cd "$OUT" && zip -r9 ../hdr_block.zip . -x ".*"
+
+      - name: Upload flashable module
+        uses: actions/upload-artifact@v4
+        with:
+          name: hdr_block-module
+          path: dist/hdr_block.zip
+          retention-days: 30
+          
