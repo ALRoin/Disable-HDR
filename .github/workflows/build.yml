@@ -3,7 +3,7 @@ name: Build HDR Block Zygisk Module
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}   # lets you trigger a build manually from the Actions tab
+  workflow_dispatch: {}
 
 jobs:
   build:
@@ -29,16 +29,18 @@ jobs:
           ndk-version: r27c
           add-to-path: true
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew package.sh
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Build native module (.so, all ABIs)
-        run: ./gradlew :native:externalNativeBuildRelease --stacktrace
+        run: gradle :native:externalNativeBuildRelease --stacktrace
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Build hook dex (HdrHook + YAHFA)
-        run: ./gradlew :hookdex:extractHookDex --stacktrace
+        run: gradle :hookdex:extractHookDex --stacktrace
 
       - name: Package flashable zip
         run: |
@@ -68,4 +70,3 @@ jobs:
           name: hdr_block-module
           path: dist/hdr_block.zip
           retention-days: 30
-          
