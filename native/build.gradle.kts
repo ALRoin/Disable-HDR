@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.hdrblock.native_"
+    namespace = "com.disablehdr.native_"
     compileSdk = 36
 
     defaultConfig {
