@@ -3,6 +3,7 @@ package com.hdrblock.hook;
 import android.util.Log;
 import android.view.Display;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 import lab.galaxy.yahfa.HookMain;
@@ -27,8 +28,6 @@ public final class HdrHook {
 
     public static void install(ClassLoader appClassLoader) {
         try {
-            HookMain.Utils.initClass();
-
             buildEmptyCapabilities();
             hookGetHdrCapabilities();
             hookIsHdr();
@@ -45,10 +44,10 @@ public final class HdrHook {
         // Display.HdrCapabilities has no public constructor, so we build it
         // via reflection with an empty supportedHdrTypes array and harmless
         // luminance placeholders.
-        Method ctor = Display.HdrCapabilities.class
+        Constructor<Display.HdrCapabilities> ctor = Display.HdrCapabilities.class
                 .getDeclaredConstructor(int[].class, float.class, float.class, float.class);
         ctor.setAccessible(true);
-        emptyCapabilities = (Display.HdrCapabilities) ctor.newInstance(
+        emptyCapabilities = ctor.newInstance(
                 new int[0],   // supportedHdrTypes -> none
                 0f,           // maxLuminance
                 0f,           // maxAverageLuminance
@@ -95,5 +94,4 @@ public final class HdrHook {
     public static boolean isHdr_hook(Display thiz) {
         return false;
     }
-    }
-  
+}
