@@ -1,9 +1,9 @@
-name: Build HDR Block Zygisk Module
+name: Build Disable HDR Zygisk Module
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch: {}   # lets you trigger a build manually from the Actions tab
 
 jobs:
   build:
@@ -39,19 +39,19 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Build hook dex (HdrHook + YAHFA)
+      - name: Build hook dex (DisableHdrHook + YAHFA)
         run: gradle :hookdex:extractHookDex --stacktrace
 
       - name: Package flashable zip
         run: |
-          OUT=dist/hdr_block
+          OUT=dist/disable_hdr
           rm -rf "$OUT"
           mkdir -p "$OUT/zygisk"
           cp -r flashable_module/. "$OUT/"
 
           NATIVE_LIBS_DIR="native/build/intermediates/ndkBuild/release/obj/local"
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-            src="$NATIVE_LIBS_DIR/$abi/libhdr_block.so"
+            src="$NATIVE_LIBS_DIR/$abi/libdisable_hdr.so"
             if [ -f "$src" ]; then
               cp "$src" "$OUT/zygisk/$abi.so"
               echo "copied $abi.so"
@@ -62,11 +62,11 @@ jobs:
 
           cp hookdex/build/hookdex-out/classes.dex "$OUT/classes.dex"
 
-          cd "$OUT" && zip -r9 ../hdr_block.zip . -x ".*"
+          cd "$OUT" && zip -r9 ../disable_hdr.zip . -x ".*"
 
       - name: Upload flashable module
         uses: actions/upload-artifact@v4
         with:
-          name: hdr_block-module
-          path: dist/hdr_block.zip
+          name: disable_hdr-module
+          path: dist/disable_hdr.zip
           retention-days: 30
