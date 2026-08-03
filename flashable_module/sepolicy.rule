@@ -1,0 +1,20 @@
+# Custom SELinux policy patch, auto-loaded by Magisk/KernelSU at every boot.
+#
+# Some devices' base policy denies apps from connecting to the Zygisk
+# companion socket (hosted in the zygote process's security context) even
+# though Zygisk itself is active and working. This shows up as:
+#
+#   avc: denied { connectto } ... scontext=u:r:untrusted_app:... \
+#        tcontext=u:r:zygote:s0 tclass=unix_stream_socket
+#
+# for every app process, regardless of which module is trying to use the
+# companion API - not something specific to this module's code. These
+# rules explicitly allow that connection for the app domains that
+# actually need it.
+
+allow untrusted_app zygote unix_stream_socket connectto
+allow priv_app zygote unix_stream_socket connectto
+allow system_app zygote unix_stream_socket connectto
+allow platform_app zygote unix_stream_socket connectto
+allow gmscore_app zygote unix_stream_socket connectto
+allow shell zygote unix_stream_socket connectto
