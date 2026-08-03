@@ -230,6 +230,7 @@ static void companion_handler(int fd) {
         int32_t zero = 0;
         write(fd, &zero, sizeof(zero));
         LOGE("companion: could not open %s", kDexPath);
+        close(fd);
         return;
     }
 
@@ -244,6 +245,7 @@ static void companion_handler(int fd) {
         write(fd, buf, n);
     }
     close(dexFd);
+    close(fd);
 }
 
 REGISTER_ZYGISK_MODULE(DisableHdrModule)
