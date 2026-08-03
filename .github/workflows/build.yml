@@ -1,72 +1,56 @@
-name: Build Disable HDR Zygisk Module
+name: Build Disable HDR Module
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch: {}   # lets you trigger a build manually from the Actions tab
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
+        uses: nsetup/setup-ndk@v1
         with:
-          ndk-version: r27c
-          add-to-path: true
+          ndk-version: r25c
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Build native module (.so, all ABIs)
-        run: gradle :native:externalNativeBuildRelease --stacktrace
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-
-      - name: Build hook dex (DisableHdrHook + YAHFA)
-        run: gradle :hookdex:extractHookDex --stacktrace
-
-      - name: Package flashable zip
+      - name: Set Execution Permissions & Environment
         run: |
-          OUT=dist/disable_hdr
-          rm -rf "$OUT"
-          mkdir -p "$OUT/zygisk"
-          cp -r flashable_module/. "$OUT/"
+          chmod +x gradlew package.sh
+          echo "$ANDROID_NDK_HOME" >> $GITHUB_PATH
 
-          NATIVE_LIBS_DIR="native/build/intermediates/ndkBuild/release/obj/local"
-          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-            src="$NATIVE_LIBS_DIR/$abi/libdisable_hdr.so"
-            if [ -f "$src" ]; then
-              cp "$src" "$OUT/zygisk/$abi.so"
-              echo "copied $abi.so"
-            else
-              echo "WARNING: missing $src"
-            fi
-          done
+      - name: Build Native Module (.so, all ABIs)
+        run: |
+          $ANDROID_NDK_HOME/ndk-build \
+            -C native/jni/ \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=native/jni/Android.mk \
+            NDK_APPLICATION_MK=native/jni/Application.mk \
+            NDK_OUT=native/obj \
+            NDK_LIBS_OUT=native/libs
 
-          cp hookdex/build/hookdex-out/classes.dex "$OUT/classes.dex"
+      - name: Build Java Payload & Package Zip
+        run: |
+          ./gradlew :hookdex:assembleRelease
+          ./package.sh
 
-          cd "$OUT" && zip -r9 ../disable_hdr.zip . -x ".*"
-
-      - name: Upload flashable module
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: disable_hdr-module
-          path: dist/disable_hdr.zip
-          retention-days: 30
+          name: disable-hdr-module
+          path: disable-hdr.zip
