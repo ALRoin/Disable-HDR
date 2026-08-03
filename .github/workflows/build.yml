@@ -1,4 +1,4 @@
-name: Build Disable HDR Module
+name: Build Zygisk Module
 
 on:
   push:
@@ -52,5 +52,5 @@ jobs:
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: disable-hdr-module
-          path: disable-hdr.zip
+          name: disable-hdr-zygisk-module
+          path: disable-hdr-zygisk.zip
