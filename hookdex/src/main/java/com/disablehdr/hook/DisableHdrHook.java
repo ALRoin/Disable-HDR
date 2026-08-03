@@ -94,5 +94,4 @@ public final class DisableHdrHook {
     public static boolean isHdr_hook(Display thiz) {
         return false;
     }
-    }
-                                                               
+}
