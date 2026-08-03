@@ -14,99 +14,15 @@
  * for reasons outside our control, so we sidestep that path completely.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <jni.h>
 #include <unistd.h>
+#include <string>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
-#include <android/log.h>
-
 #include "zygisk.hpp"
-
-#define LOG_TAG "DisableHdrZygisk"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
-using zygisk::ServerSpecializeArgs;
-
-// ---------------------------------------------------------------------------
-// Target package list lives in a plain text config file so it can be edited
-// from the module's WebUI (webroot/) without recompiling. One package name
-// per line, '#' for comments. Empty/missing file = hook every app process.
-// ---------------------------------------------------------------------------
-static const char *kTargetsPath = "/data/adb/modules/disable_hdr/targets.txt";
-static const char *kDexPath = "/data/adb/modules/disable_hdr/classes.dex";
-
-static bool shouldHook(const char *pkg) {
-    FILE *f = fopen(kTargetsPath, "r");
-    if (!f) {
-        // No config yet -> default to global mode (matches original behavior).
-        return true;
-    }
-
-    char line[256];
-    bool hasAnyEntry = false;
-    bool matched = false;
-    while (fgets(line, sizeof(line), f)) {
-        size_t len = strlen(line);
-        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' || line[len - 1] == ' ')) {
-            line[--len] = '\0';
-        }
-        if (len == 0 || line[0] == '#') continue; // blank line or comment
-        hasAnyEntry = true;
-        if (strcmp(pkg, line) == 0) {
-            matched = true;
-            break;
-        }
-    }
-    fclose(f);
-
-    return !hasAnyEntry || matched;
-}
-
-// Reads classes.dex fully into a malloc'd buffer. Returns nullptr on failure.
-// Caller owns the returned buffer and must free() it.
-static void *readDexFile(int32_t *outSize) {
-    int fd = open(kDexPath, O_RDONLY);
-    if (fd < 0) {
-        LOGE("could not open %s", kDexPath);
-        return nullptr;
-    }
-
-    struct stat st{};
-    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
-        close(fd);
-        return nullptr;
-    }
-
-    int32_t size = (int32_t) st.st_size;
-    void *buf = malloc(size);
-    if (!buf) {
-        close(fd);
-        return nullptr;
-    }
-
-    ssize_t total = 0;
-    while (total < size) {
-        ssize_t n = read(fd, (char *) buf + total, size - total);
-        if (n <= 0) break;
-        total += n;
-    }
-    close(fd);
-
-    if (total != size) {
-        LOGE("short read of %s (%zd/%d)", kDexPath, total, size);
-        free(buf);
-        return nullptr;
-    }
-
-    *outSize = size;
-    return buf;
-}
 
 class DisableHdrModule : public zygisk::ModuleBase {
 public:
@@ -116,127 +32,84 @@ public:
     }
 
     void preAppSpecialize(AppSpecializeArgs *args) override {
-        const char *process = env->GetStringUTFChars(args->nice_name, nullptr);
-        hookThisProcess = shouldHook(process);
-        env->ReleaseStringUTFChars(args->nice_name, process);
+        if (args == nullptr || args->nice_name == nullptr) {
+            return;
+        }
 
-        if (!hookThisProcess) {
-            // Not a target: let Zygisk unload us from this process immediately.
+        const char *process_name = env->GetStringUTFChars(args->nice_name, nullptr);
+        if (process_name == nullptr) return;
+
+        std::string name(process_name);
+        env->ReleaseStringUTFChars(args->nice_name, process_name);
+
+        // Ignore system processes and isolated services
+        if (name.empty() || 
+            name.find("system_server") != std::string::npos ||
+            name.find("com.android.systemui") != std::string::npos ||
+            name.find("isolated") != std::string::npos) {
             api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
             return;
         }
 
-        // Still root here (privilege drop happens during specialization,
-        // after this callback returns) - read the dex now while we can,
-        // and hold onto it until postAppSpecialize, where the app's own
-        // ClassLoader actually exists.
-        dexBuf = readDexFile(&dexSize);
-        if (!dexBuf) {
-            LOGE("failed to read hook dex, skipping this process");
-            hookThisProcess = false;
-            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        should_inject = true;
+    }
+
+    void postAppSpecialize(const AppSpecializeArgs *) override {
+        if (!should_inject) return;
+
+        // Fetch companion module DEX file descriptor provided by Zygisk
+        int fd = api->connectCompanion();
+        if (fd < 0) return;
+
+        off_t size = lseek(fd, 0, SEEK_END);
+        if (size <= 0) {
+            close(fd);
+            return;
         }
-    }
+        lseek(fd, 0, SEEK_SET);
 
-    void postAppSpecialize(const AppSpecializeArgs *args) override {
-        if (!hookThisProcess || !dexBuf) return;
-        installHookFromBufferedDex();
-        free(dexBuf);
-        dexBuf = nullptr;
-    }
-
-    void preServerSpecialize(ServerSpecializeArgs *args) override {
-        // We don't need to run inside system_server for this use case.
-        api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        // Load DEX payload in target application process
+        loadDexAndInit(fd, size);
+        close(fd);
     }
 
 private:
     Api *api = nullptr;
     JNIEnv *env = nullptr;
-    bool hookThisProcess = false;
-    void *dexBuf = nullptr;
-    int32_t dexSize = 0;
+    bool should_inject = false;
 
-    // Loads the already-in-memory dex (read back in preAppSpecialize) via
-    // dalvik.system.InMemoryDexClassLoader, then calls
-    // com.disablehdr.hook.DisableHdrHook.install(ClassLoader).
-    void installHookFromBufferedDex() {
-        jobject appClassLoader = getAppClassLoader();
-        if (appClassLoader == nullptr) {
-            LOGE("could not resolve app ClassLoader");
-            return;
+    void loadDexAndInit(int fd, off_t size) {
+        jobject byte_buffer = env->NewDirectByteBuffer(
+            mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0), size
+        );
+        if (!byte_buffer) return;
+
+        jclass class_loader_cls = env->FindClass("dalvik/system/InMemoryDexClassLoader");
+        jclass class_cls = env->FindClass("java/lang/Class");
+        jclass thread_cls = env->FindClass("java/lang/Thread");
+
+        jmethodID get_cl_mid = env->GetMethodID(thread_cls, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
+        jmethodID current_thread_mid = env->GetStaticMethodID(thread_cls, "currentThread", "()Ljava/lang/Thread;");
+        jobject current_thread = env->CallStaticObjectMethod(thread_cls, current_thread_mid);
+        jobject parent_cl = env->CallObjectMethod(current_thread, get_cl_mid);
+
+        jmethodID dex_loader_init = env->GetMethodID(
+            class_loader_cls, "<init>", "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V"
+        );
+        jobject dex_loader = env->NewObject(class_loader_cls, dex_loader_init, byte_buffer, parent_cl);
+
+        jmethodID load_class_mid = env->GetMethodID(
+            class_loader_cls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;"
+        );
+        jstring hook_class_name = env->NewStringUTF("com.disablehdr.hook.DisableHdrHook");
+        auto hook_class = static_cast<jclass>(env->CallObjectMethod(dex_loader, load_class_mid, hook_class_name));
+
+        if (hook_class) {
+            jmethodID init_mid = env->GetStaticMethodID(hook_class, "init", "()V");
+            if (init_mid) {
+                env->CallStaticVoidMethod(hook_class, init_mid);
+            }
         }
-
-        // ByteBuffer.allocateDirect(dexSize) then copy our dex bytes in.
-        jclass byteBufferCls = env->FindClass("java/nio/ByteBuffer");
-        jmethodID allocateDirect = env->GetStaticMethodID(
-                byteBufferCls, "allocateDirect", "(I)Ljava/nio/ByteBuffer;");
-        jobject byteBuffer = env->CallStaticObjectMethod(byteBufferCls, allocateDirect, dexSize);
-
-        void *direct = env->GetDirectBufferAddress(byteBuffer);
-        memcpy(direct, dexBuf, dexSize);
-
-        // new dalvik.system.InMemoryDexClassLoader(byteBuffer, parentClassLoader)
-        jclass dexLoaderCls = env->FindClass("dalvik/system/InMemoryDexClassLoader");
-        jmethodID dexLoaderCtor = env->GetMethodID(
-                dexLoaderCls, "<init>",
-                "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
-        jobject dexLoader = env->NewObject(dexLoaderCls, dexLoaderCtor, byteBuffer, appClassLoader);
-
-        // dexLoader.loadClass("com.disablehdr.hook.DisableHdrHook")
-        jmethodID loadClass = env->GetMethodID(
-                env->GetObjectClass(dexLoader), "loadClass",
-                "(Ljava/lang/String;)Ljava/lang/Class;");
-        jstring className = env->NewStringUTF("com.disablehdr.hook.DisableHdrHook");
-        jclass hookCls = (jclass) env->CallObjectMethod(dexLoader, loadClass, className);
-
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            LOGE("failed to load DisableHdrHook class from injected dex");
-            return;
-        }
-
-        // DisableHdrHook.install(appClassLoader)
-        jmethodID installMethod = env->GetStaticMethodID(
-                hookCls, "install", "(Ljava/lang/ClassLoader;)V");
-        env->CallStaticVoidMethod(hookCls, installMethod, appClassLoader);
-
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            LOGE("DisableHdrHook.install() threw");
-        } else {
-            LOGD("HDR hook installed successfully");
-        }
-    }
-
-    // Walks up from the current thread's context to find the app's real
-    // ClassLoader (not the boot classloader), matching what LSPosed does
-    // before injecting.
-    jobject getAppClassLoader() {
-        jclass activityThreadCls = env->FindClass("android/app/ActivityThread");
-        if (activityThreadCls == nullptr) {
-            env->ExceptionClear();
-            return nullptr;
-        }
-        jmethodID currentActivityThread = env->GetStaticMethodID(
-                activityThreadCls, "currentActivityThread", "()Landroid/app/ActivityThread;");
-        jobject activityThread = env->CallStaticObjectMethod(activityThreadCls, currentActivityThread);
-        if (activityThread == nullptr) return nullptr;
-
-        jmethodID getApplication = env->GetMethodID(
-                activityThreadCls, "getApplication", "()Landroid/app/Application;");
-        jobject application = env->CallObjectMethod(activityThread, getApplication);
-        if (application == nullptr || env->ExceptionCheck()) {
-            env->ExceptionClear();
-            return nullptr;
-        }
-
-        jclass contextCls = env->FindClass("android/content/Context");
-        jmethodID getClassLoader = env->GetMethodID(
-                contextCls, "getClassLoader", "()Ljava/lang/ClassLoader;");
-        return env->CallObjectMethod(application, getClassLoader);
     }
 };
 
