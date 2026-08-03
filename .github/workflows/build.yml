@@ -31,10 +31,10 @@ jobs:
 
       - name: Set Execution Permissions & Environment
         run: |
-          chmod +x gradlew package.sh
+          chmod +x gradlew package.sh 2>/dev/null || true
           echo "$ANDROID_NDK_HOME" >> $GITHUB_PATH
 
-      - name: Build Native Module (.so, all ABIs)
+      - name: Build Native Binaries (ndk-build)
         run: |
           $ANDROID_NDK_HOME/ndk-build \
             -C native/jni/ \
@@ -44,12 +44,12 @@ jobs:
             NDK_OUT=native/obj \
             NDK_LIBS_OUT=native/libs
 
-      - name: Build Java Payload & Package Zip
+      - name: Build DEX Payload & Package Module
         run: |
           ./gradlew :hookdex:assembleRelease
           ./package.sh
 
-      - name: Upload Build Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: disable-hdr-zygisk-module
