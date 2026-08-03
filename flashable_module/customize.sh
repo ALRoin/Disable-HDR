@@ -1,11 +1,22 @@
-#!/system/bin/sh
+#!/sbin/sh
+SKIPUNZIP=1
 
-ui_print "- Installing Disable HDR module"
-if [ ! -f "$MODPATH/targets.txt" ]; then
-  touch "$MODPATH/targets.txt"
+ui_print "- Extracting module files..."
+unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH"
+unzip -o "$ZIPFILE" 'sepolicy.rule' -d "$MODPATH"
+unzip -o "$ZIPFILE" 'zygisk/*' -d "$MODPATH"
+
+# Architecture detection
+if [ "$ARCH" = "arm64" ]; then
+    ui_print "- Installing 64-bit Zygisk binary..."
+    mkdir -p "$MODPATH/zygisk"
+    mv "$MODPATH/zygisk/arm64-v8a.so" "$MODPATH/zygisk/arm64-v8a.so" 2>/dev/null
+elif [ "$ARCH" = "arm" ]; then
+    ui_print "- Installing 32-bit Zygisk binary..."
+    mkdir -p "$MODPATH/zygisk"
+    mv "$MODPATH/zygisk/armeabi-v7a.so" "$MODPATH/zygisk/armeabi-v7a.so" 2>/dev/null
 fi
-set_perm "$MODPATH/targets.txt" 0 0 0644
 
-set_perm "$MODPATH/classes.dex" 0 0 0644
-
-ui_print "- Done. Reboot to activate."
+set_permissions() {
+    set_perm_recursive "$MODPATH" 0 0 0755 0644
+}
