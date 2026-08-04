@@ -1,284 +1,258 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Disable HDR</title>
 <style>
-    :root {
-        --bg-color: #0d0f14;
-        --surface-color: #151822;
-        --card-color: #1c2030;
-        --text-main: #f3f4f6;
-        --text-muted: #8a8fa3;
-        --accent-color: #4c8dff;
-        --accent-hover: #3a7ae0;
-        --border-color: #262a3a;
-    }
-    * { box-sizing: border-box; }
-    body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        background-color: var(--bg-color);
-        color: var(--text-main);
-        margin: 0; padding: 0;
-        display: flex; flex-direction: column;
-        height: 100vh;
-    }
-    .header {
-        background-color: var(--surface-color);
-        padding: 18px 16px;
-        border-bottom: 1px solid var(--border-color);
-        position: sticky; top: 0; z-index: 10;
-    }
-    .header-title-row { margin-bottom: 4px; }
-    h2 { margin: 0; font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; }
-    p.sub { margin: 0 0 14px; font-size: 0.8rem; color: var(--text-muted); }
-    .action-buttons { display: flex; gap: 8px; }
-    .btn {
-        padding: 10px 14px; border: none; border-radius: 8px; font-size: 0.85rem;
-        font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap;
-    }
-    .btn-outline { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
-    .btn-outline:active { background: rgba(255,255,255,0.05); color: var(--text-main); }
-    .btn-primary { background: var(--accent-color); color: #fff; flex: 1; }
-    .btn-primary:active { background: var(--accent-hover); }
-    .search-container { margin-top: 12px; display: flex; gap: 8px; }
-    .search-input {
-        flex: 1; min-width: 0; padding: 11px 14px; background-color: var(--bg-color);
-        border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main);
-        font-size: 0.9rem; outline: none;
-    }
-    .search-input:focus { border-color: var(--accent-color); }
-    .app-list { flex: 1; overflow-y: auto; padding: 14px 12px; }
-    .app-item {
-        display: flex; align-items: center; justify-content: space-between; padding: 13px 14px;
-        background-color: var(--surface-color); margin-bottom: 8px; border-radius: 10px;
-        border: 1px solid var(--border-color); cursor: pointer;
-    }
-    .app-item:active { background-color: var(--card-color); border-color: #3b415a; }
-    .app-details { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-    .app-name { font-size: 1rem; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .app-pkg {
-        font-size: 0.75rem; margin: 3px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        font-family: 'Courier New', monospace; color: var(--text-muted);
-    }
-    .checkbox-container { position: relative; width: 22px; height: 22px; margin-left: 14px; flex-shrink: 0; }
-    .checkbox-container input { position: absolute; opacity: 0; height: 0; width: 0; }
-    .checkmark {
-        position: absolute; top: 0; left: 0; height: 22px; width: 22px; background-color: var(--bg-color);
-        border-radius: 6px; border: 2px solid var(--accent-color); transition: all 0.15s ease;
-    }
-    .checkbox-container input:checked ~ .checkmark { background-color: var(--accent-color); }
-    .checkmark:after { content: ""; position: absolute; display: none; }
-    .checkbox-container input:checked ~ .checkmark:after { display: block; }
-    .checkmark:after { left: 6px; top: 2px; width: 5px; height: 10px; border: solid #fff; border-width: 0 3px 3px 0; transform: rotate(45deg); }
-    .status-bar { padding: 10px 16px; font-size: 0.78rem; color: var(--text-muted); border-top: 1px solid var(--border-color); background: var(--surface-color); }
-    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 0.9rem; }
-    .spinner { width: 36px; height: 36px; border: 3px solid var(--border-color); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#f5f5f7, #121212);
+    --card: light-dark(#ffffff, #1e1e1e);
+    --text: light-dark(#1c1c1e, #f2f2f2);
+    --muted: light-dark(#6b6b70, #9a9a9e);
+    --border: light-dark(#e2e2e5, #2c2c2e);
+    --accent: #4f7cff;
+    --danger: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  p.sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 1.4; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
+  input[type="search"], input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+  }
+  button {
+    border: none;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: white; }
+  button.secondary { background: var(--border); color: var(--text); }
+  button:disabled { opacity: 0.5; }
+  .app-list { max-height: 46vh; overflow-y: auto; margin-top: 10px; }
+  .app-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .app-row:last-child { border-bottom: none; }
+  .app-row .meta { flex: 1; min-width: 0; }
+  .app-row .label { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-row .pkg { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-row input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+  .status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  .footer-actions { position: sticky; bottom: 0; display: flex; gap: 10px; padding-top: 4px; }
+  .footer-actions button { flex: 1; }
+  .empty-hint { font-size: 13px; color: var(--muted); padding: 8px 4px; }
 </style>
 </head>
 <body>
+  <h1>Disable HDR</h1>
+  <p class="sub">
+    Hides HDR support from apps via Zygisk (LSPlant + Dobby, self-contained -
+    no LSPosed needed). Pick specific apps below, or leave everything
+    unchecked to apply it everywhere.
+  </p>
 
-<header class="header">
-    <div class="header-title-row"><h2>Disable HDR</h2></div>
-    <p class="sub">Pick which apps get their HDR capability hidden. Empty selection = every app is hooked.</p>
-    <div class="action-buttons">
-        <button class="btn btn-outline" id="btn-select-all">Select All</button>
-        <button class="btn btn-outline" id="btn-clear-all">Clear All</button>
-        <button class="btn btn-primary" id="btn-save">Save</button>
+  <div class="card">
+    <input type="search" id="search" placeholder="Search installed apps or type a package name…" />
+    <div id="appList" class="app-list"><div class="empty-hint">Loading installed apps…</div></div>
+    <div class="row" style="margin-top:10px;">
+      <input type="text" id="manualPkg" placeholder="com.example.app (add manually)" />
+      <button class="secondary" id="addManual">Add</button>
     </div>
-    <div class="search-container">
-        <input type="text" id="search-bar" class="search-input" placeholder="Search app name or package...">
-        <button class="btn btn-outline" id="btn-reload">↻</button>
-    </div>
-</header>
+    <div id="status" class="status"></div>
+  </div>
 
-<main class="app-list" id="app-list">
-    <div class="loading">
-        <div class="spinner"></div>
-        <div>Loading installed apps…</div>
-    </div>
-</main>
+  <div class="footer-actions">
+    <button class="secondary" id="reload">Reload</button>
+    <button class="primary" id="save">Save</button>
+  </div>
 
-<div class="status-bar" id="status">Ready.</div>
+  <script type="module">
+    import { exec, toast, listPackages, getPackagesInfo } from "./kernelsu.js";
 
-<script type="module">
-import { exec, toast, listPackages, getPackagesInfo } from './kernelsu.js';
+    const TARGETS_PATH = "/data/adb/modules/disable_hdr/targets.txt";
+    const PKG_RE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
 
-const CONFIG_PATH = "/data/adb/modules/disable_hdr/targets.txt";
+    const appListEl = document.getElementById("appList");
+    const searchEl = document.getElementById("search");
+    const statusEl = document.getElementById("status");
+    const manualPkgEl = document.getElementById("manualPkg");
 
-let userApps = [];
-let selectedPackages = new Set();
-let searchQuery = "";
+    /** @type {{packageName:string, appLabel:string, isSystem?:boolean}[]} */
+    let allApps = [];
+    /** @type {Set<string>} */
+    let selected = new Set();
 
-function setStatus(msg) {
-    document.getElementById('status').textContent = msg;
-}
-
-const generateFallbackName = (pkg) => {
-    const parts = pkg.split('.');
-    let fallback = parts[parts.length - 1];
-    return fallback.charAt(0).toUpperCase() + fallback.slice(1);
-};
-
-async function waitForKernelSUCache() {
-    for (let i = 0; i < 30; i++) {
-        try {
-            const pkgs = listPackages('user');
-            if (pkgs && pkgs.length > 0) return pkgs;
-        } catch (e) {}
-        await new Promise(r => setTimeout(r, 200));
+    function friendlyNameFromPackage(pkg) {
+      const last = pkg.split(".").pop() || pkg;
+      return last.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     }
-    try { return listPackages('user'); } catch (e) { return []; }
-}
 
-async function loadApps() {
-    const listDiv = document.getElementById('app-list');
-    listDiv.innerHTML = `<div class="loading"><div class="spinner"></div><div>Loading installed apps…</div></div>`;
-    setStatus('Loading…');
-
-    try {
-        if (typeof ksu === 'undefined') {
-            throw new Error("KernelSU bridge missing -- open this page from inside KernelSU Manager.");
-        }
-
-        const pkgs = await waitForKernelSUCache();
-        if (!pkgs || pkgs.length === 0) {
-            listDiv.innerHTML = '<div class="loading">No apps found.</div>';
-            setStatus('No apps found.');
-            return;
-        }
-
-        let infoArr = [];
-        try { infoArr = getPackagesInfo(pkgs); } catch (e) {}
-
-        userApps = infoArr.map(info => {
-            let name = info.appLabel;
-            if (!name || name === info.packageName) name = generateFallbackName(info.packageName);
-            return { packageName: info.packageName, appName: name };
-        });
-
-        const configRes = await exec(`cat "${CONFIG_PATH}" 2>/dev/null`);
-        selectedPackages.clear();
-        if (configRes.errno === 0 && configRes.stdout) {
-            configRes.stdout.split("\n").forEach(line => {
-                const t = line.trim();
-                if (!t || t.startsWith('#')) return;
-                selectedPackages.add(t);
-            });
-        }
-
-        setStatus(`${userApps.length} apps loaded, ${selectedPackages.size} selected.`);
-        renderList();
-    } catch (err) {
-        listDiv.innerHTML = `<div class="loading">${err.message || err}</div>`;
-        setStatus('Error loading apps.');
+    async function loadTargets() {
+      try {
+        const { errno, stdout } = await exec(`cat ${TARGETS_PATH} 2>/dev/null`);
+        if (errno !== 0) return new Set();
+        return new Set(
+          stdout
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith("#"))
+        );
+      } catch {
+        return new Set();
+      }
     }
-}
 
-function renderList() {
-    const listDiv = document.getElementById('app-list');
-    listDiv.innerHTML = '';
+    async function loadInstalledApps() {
+      // Preferred path: the official listPackages/getPackagesInfo API (added
+      // in newer KernelSU Manager builds) gives real app labels. It's wrapped
+      // defensively since older Manager versions won't implement it natively.
+      try {
+        const names = listPackages("user");
+        if (names && names.length) {
+          const infos = getPackagesInfo(names);
+          if (infos && infos.length) {
+            return infos.map((i) => ({ packageName: i.packageName, appLabel: i.appLabel || friendlyNameFromPackage(i.packageName) }));
+          }
+          return names.map((pkg) => ({ packageName: pkg, appLabel: friendlyNameFromPackage(pkg) }));
+        }
+      } catch {
+        /* fall through to shell-based listing below */
+      }
 
-    let filtered = userApps.filter(app =>
-        !searchQuery ||
-        app.appName.toLowerCase().includes(searchQuery) ||
-        app.packageName.toLowerCase().includes(searchQuery)
-    );
-    filtered.sort((a, b) => a.appName.localeCompare(b.appName, undefined, { numeric: true, sensitivity: 'base' }));
+      // Fallback: always works, just without real app labels.
+      try {
+        const { errno, stdout } = await exec("pm list packages -3");
+        if (errno === 0) {
+          return stdout
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l.startsWith("package:"))
+            .map((l) => l.slice("package:".length))
+            .filter(Boolean)
+            .map((pkg) => ({ packageName: pkg, appLabel: friendlyNameFromPackage(pkg) }));
+        }
+      } catch {
+        /* ignore */
+      }
+      return [];
+    }
 
-    if (filtered.length === 0) {
-        listDiv.innerHTML = '<div class="loading">No apps match your search.</div>';
+    function renderList() {
+      const query = searchEl.value.trim().toLowerCase();
+      const filtered = allApps.filter(
+        (a) => !query || a.appLabel.toLowerCase().includes(query) || a.packageName.toLowerCase().includes(query)
+      );
+
+      // Selected-but-not-in-the-installed-list entries (added manually, or
+      // the app was uninstalled since) still get shown so you don't lose them.
+      const shown = new Map(filtered.map((a) => [a.packageName, a]));
+      for (const pkg of selected) {
+        if (!shown.has(pkg) && (!query || pkg.toLowerCase().includes(query))) {
+          shown.set(pkg, { packageName: pkg, appLabel: friendlyNameFromPackage(pkg) });
+        }
+      }
+
+      const rows = [...shown.values()].sort((a, b) => a.appLabel.localeCompare(b.appLabel));
+
+      if (rows.length === 0) {
+        appListEl.innerHTML = `<div class="empty-hint">No matching apps.</div>`;
         return;
+      }
+
+      appListEl.innerHTML = "";
+      for (const app of rows) {
+        const row = document.createElement("label");
+        row.className = "app-row";
+        row.innerHTML = `
+          <input type="checkbox" data-pkg="${app.packageName}" ${selected.has(app.packageName) ? "checked" : ""} />
+          <div class="meta">
+            <div class="label">${app.appLabel}</div>
+            <div class="pkg">${app.packageName}</div>
+          </div>`;
+        row.querySelector("input").addEventListener("change", (e) => {
+          if (e.target.checked) selected.add(app.packageName);
+          else selected.delete(app.packageName);
+        });
+        appListEl.appendChild(row);
+      }
     }
 
-    const frag = document.createDocumentFragment();
-    filtered.forEach(app => {
-        const pkg = app.packageName;
-        const item = document.createElement('div');
-        item.className = 'app-item';
-        item.setAttribute('data-package-id', pkg);
-        item.innerHTML = `
-            <div class="app-details">
-                <p class="app-name">${app.appName}</p>
-                <p class="app-pkg">${pkg}</p>
-            </div>
-            <label class="checkbox-container" style="pointer-events: none;">
-                <input type="checkbox" value="${pkg}" ${selectedPackages.has(pkg) ? 'checked' : ''}>
-                <span class="checkmark"></span>
-            </label>
-        `;
-        frag.appendChild(item);
+    async function init() {
+      statusEl.textContent = "";
+      const [targets, apps] = await Promise.all([loadTargets(), loadInstalledApps()]);
+      selected = targets;
+      allApps = apps;
+      if (apps.length === 0) {
+        statusEl.textContent = "Couldn't list installed apps - you can still add packages manually below.";
+      }
+      renderList();
+    }
+
+    searchEl.addEventListener("input", renderList);
+
+    document.getElementById("addManual").addEventListener("click", () => {
+      const pkg = manualPkgEl.value.trim();
+      if (!PKG_RE.test(pkg)) {
+        statusEl.textContent = `"${pkg}" doesn't look like a valid package name.`;
+        return;
+      }
+      selected.add(pkg);
+      manualPkgEl.value = "";
+      statusEl.textContent = "";
+      renderList();
     });
-    listDiv.appendChild(frag);
-}
 
-function togglePackage(pkg) {
-    if (selectedPackages.has(pkg)) selectedPackages.delete(pkg);
-    else selectedPackages.add(pkg);
-    renderList();
-    setStatus(`${selectedPackages.size} selected (unsaved).`);
-}
+    document.getElementById("reload").addEventListener("click", init);
 
-function selectAll(check) {
-    userApps.forEach(app => {
-        const matches = !searchQuery || app.appName.toLowerCase().includes(searchQuery) || app.packageName.toLowerCase().includes(searchQuery);
-        if (!matches) return;
-        if (check) selectedPackages.add(app.packageName);
-        else selectedPackages.delete(app.packageName);
-    });
-    renderList();
-    setStatus(`${selectedPackages.size} selected (unsaved).`);
-}
-
-async function save() {
-    setStatus('Saving…');
-    let content = "# Disable HDR target list\n# One package name per line. Empty = hook every app.\n\n";
-    Array.from(selectedPackages).sort().forEach(p => content += `${p}\n`);
-
-    try {
-        const b64 = btoa(unescape(encodeURIComponent(content)));
-        const cmd = `mkdir -p /data/adb/modules/disable_hdr && echo '${b64}' | base64 -d > "${CONFIG_PATH}" && chmod 0644 "${CONFIG_PATH}"`;
-        const res = await exec(cmd);
-        if (res.errno === 0) {
-            setStatus(`Saved. ${selectedPackages.size} apps targeted.`);
-            toast('Disable HDR: target list saved');
+    document.getElementById("save").addEventListener("click", async () => {
+      const lines = [...selected].filter((p) => PKG_RE.test(p)).sort();
+      // Every entry has already been validated against PKG_RE above, so it's
+      // safe to interpolate directly into the shell command.
+      const cmd = lines.length
+        ? `{ ${lines.map((p) => `echo ${p}`).join("; ")}; } > ${TARGETS_PATH}`
+        : `: > ${TARGETS_PATH}`;
+      try {
+        const { errno, stderr } = await exec(cmd);
+        if (errno === 0) {
+          toast(lines.length ? `Saved - ${lines.length} app(s) targeted` : "Saved - applies to all apps now");
         } else {
-            setStatus('Save failed: ' + res.stderr);
-            toast('Disable HDR: save failed');
+          toast("Save failed: " + stderr);
         }
-    } catch (e) {
-        setStatus('Save failed: ' + e);
-    }
-}
+      } catch (e) {
+        toast("Save failed: " + e);
+      }
+    });
 
-document.getElementById('btn-select-all').addEventListener('click', () => selectAll(true));
-document.getElementById('btn-clear-all').addEventListener('click', () => selectAll(false));
-document.getElementById('btn-save').addEventListener('click', save);
-document.getElementById('btn-reload').addEventListener('click', loadApps);
-document.getElementById('search-bar').addEventListener('input', (e) => {
-    searchQuery = e.target.value.toLowerCase().trim();
-    renderList();
-});
-document.getElementById('app-list').addEventListener('click', (e) => {
-    const item = e.target.closest('.app-item');
-    if (!item) return;
-    const pkg = item.getAttribute('data-package-id');
-    const checkbox = item.querySelector('input[type="checkbox"]');
-    checkbox.checked = !checkbox.checked;
-    togglePackage(pkg);
-});
-
-async function init() {
-    for (let i = 0; i < 20; i++) {
-        if (typeof ksu !== 'undefined') break;
-        await new Promise(r => setTimeout(r, 75));
-    }
-    loadApps();
-}
-window.addEventListener('DOMContentLoaded', init);
-</script>
+    init();
+  </script>
 </body>
 </html>
