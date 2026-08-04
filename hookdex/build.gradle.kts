@@ -28,11 +28,12 @@ android {
     }
 }
 
-dependencies {
-    // YAHFA: the ART method-hooking core (same lineage LSPosed itself
-    // is built on). Maintained fork tracks current Android releases.
-    implementation("io.github.pagalaxylab:yahfa:0.10.0")
-}
+// No dependencies on purpose: Bridge.java is two `native` method
+// declarations and nothing else (see its own doc comment for why). All the
+// actual hooking work - and this project's only two third-party
+// dependencies, LSPlant and Dobby - live in native/, not here. Compare with
+// the previous version of this module, which pulled in YAHFA here to do
+// Java-side reflection-based hooking; that's gone along with the dependency.
 
 // After assembling the APK, pull classes.dex out of it and drop it where
 // the packaging script (package.sh) expects to find it.
