@@ -1,6 +1,6 @@
 id=disable_hdr
 name=Disable HDR
-version=v1.0
+version=v1.0.0
 versionCode=1
 author=Roz
-description=Hooks Display.getHdrCapabilities()/isHdr() via a self-contained Zygisk module so target apps see no HDR support.
+description=Hides HDR support from apps

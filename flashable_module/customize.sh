@@ -1,22 +1,22 @@
-#!/sbin/sh
-SKIPUNZIP=1
+#!/system/bin/sh
+# Runs once at install time - the KernelSU (or Magisk) Manager app calls
+# this automatically right after extracting the zip into place.
 
-ui_print "- Extracting module files..."
-unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH"
-unzip -o "$ZIPFILE" 'sepolicy.rule' -d "$MODPATH"
-unzip -o "$ZIPFILE" 'zygisk/*' -d "$MODPATH"
+ui_print "- Installing Disable HDR module"
 
-# Architecture detection
-if [ "$ARCH" = "arm64" ]; then
-    ui_print "- Installing 64-bit Zygisk binary..."
-    mkdir -p "$MODPATH/zygisk"
-    mv "$MODPATH/zygisk/arm64-v8a.so" "$MODPATH/zygisk/arm64-v8a.so" 2>/dev/null
-elif [ "$ARCH" = "arm" ]; then
-    ui_print "- Installing 32-bit Zygisk binary..."
-    mkdir -p "$MODPATH/zygisk"
-    mv "$MODPATH/zygisk/armeabi-v7a.so" "$MODPATH/zygisk/armeabi-v7a.so" 2>/dev/null
+# targets.txt controls which apps get hooked: one package name per line,
+# '#' starts a comment. Empty/missing file = hook every app (global mode).
+# Only create it if it doesn't already exist, so re-flashing an update
+# doesn't wipe out a list you built with the WebUI.
+if [ ! -f "$MODPATH/targets.txt" ]; then
+  touch "$MODPATH/targets.txt"
 fi
+set_perm "$MODPATH/targets.txt" 0 0 0644
 
-set_permissions() {
-    set_perm_recursive "$MODPATH" 0 0 0755 0644
-}
+# classes.dex is read straight off disk by the native module while it's
+# still running as root, during preAppSpecialize - i.e. before the process
+# drops privileges to the target app's own UID. No companion process and no
+# permissions beyond world-readable are needed for that.
+set_perm "$MODPATH/classes.dex" 0 0 0644
+
+ui_print "- Done. Force-stop or reopen target apps to activate (no reboot needed)."
