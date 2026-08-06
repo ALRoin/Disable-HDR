@@ -42,11 +42,20 @@ include(FetchContent)
 # a real release tag instead (see https://github.com/LSPosed/LSPlant/tags)
 # for reproducible builds.
 # -----------------------------------------------------------------------
+# GIT_SUBMODULES "" - LSPlant's repo has git submodules (test fixtures
+# under test/src/main/jni/external/, referenced over SSH as
+# git@github.com:LSPosed/<name>.git). GitHub Actions runners have no SSH
+# key configured for that, so a normal recursive submodule checkout fails
+# outright ("Could not read from remote repository"). We only compile
+# lsplant/ (the library itself, filtered below to exclude test/ anyway),
+# so skip submodules entirely rather than trying to authenticate for
+# fixtures we don't need.
 FetchContent_Declare(
     lsplant_src
     GIT_REPOSITORY https://github.com/LSPosed/LSPlant.git
     GIT_TAG        master
     GIT_SHALLOW    TRUE
+    GIT_SUBMODULES ""
 )
 FetchContent_Populate(lsplant_src)
 
