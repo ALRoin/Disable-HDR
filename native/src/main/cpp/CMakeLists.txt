@@ -75,9 +75,18 @@ endif()
 
 set(LSPLANT_INCLUDE_DIRS "")
 foreach(candidate
-    "${lsplant_src_SOURCE_DIR}/lsplant/src/main/cpp"
-    "${lsplant_src_SOURCE_DIR}/lsplant/src/main/cpp/include"
+    # Verified against LSPlant's actual current repo layout (the Doxygen
+    # docs it publishes mirror the real source tree, and both the search
+    # index and the generated page for lsplant.hpp itself show this exact
+    # breadcrumb): lsplant.cc lives directly in .../jni/, but the public
+    # header is one level deeper, in .../jni/include/. That's what the
+    # previous candidate list got wrong - it had "jni" but not "jni/include",
+    # so the .cc file's own directory was on the include path but the
+    # header never was. https://lsposed.org/LSPlant/lsplant_8hpp.html
+    "${lsplant_src_SOURCE_DIR}/lsplant/src/main/jni/include"
     "${lsplant_src_SOURCE_DIR}/lsplant/src/main/jni"
+    "${lsplant_src_SOURCE_DIR}/lsplant/src/main/cpp/include"
+    "${lsplant_src_SOURCE_DIR}/lsplant/src/main/cpp"
 )
     if(EXISTS "${candidate}")
         list(APPEND LSPLANT_INCLUDE_DIRS "${candidate}")
