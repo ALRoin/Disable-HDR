@@ -6,114 +6,535 @@
 <title>Disable HDR</title>
 <style>
   :root {
-    color-scheme: light dark;
-    --bg: light-dark(#f5f5f7, #121212);
-    --card: light-dark(#ffffff, #1e1e1e);
-    --text: light-dark(#1c1c1e, #f2f2f2);
-    --muted: light-dark(#6b6b70, #9a9a9e);
-    --border: light-dark(#e2e2e5, #2c2c2e);
-    --accent: #4f7cff;
-    --danger: #e5484d;
+    --bg: #08090d;
+    --surface: #10131a;
+    --surface-2: #171b24;
+    --surface-3: #1d2230;
+    --border: #232838;
+    --border-soft: #1a1e2a;
+    --text: #eef0f5;
+    --text-muted: #7d8399;
+    --text-faint: #4b5066;
+    --nits-low: #4a7cff;
+    --nits-high: #ffb454;
+    --nits-peak: #fff4e0;
+    --signal: #5eead4;
+    --danger: #ff6b6b;
+    --gradient: linear-gradient(135deg, var(--nits-low), var(--nits-high));
+    --radius: 16px;
+    --radius-sm: 11px;
+    --font-ui: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "Roboto Mono", ui-monospace, "SF Mono", Consolas, monospace;
   }
-  * { box-sizing: border-box; }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body { height: 100%; }
+
   body {
     margin: 0;
-    padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: env(safe-area-inset-bottom);
   }
-  h1 { font-size: 20px; margin: 4px 0 2px; }
-  p.sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 1.4; }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px;
-    margin-bottom: 14px;
+
+  .page {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 18px 16px 100px;
   }
-  .row { display: flex; align-items: center; gap: 10px; }
-  input[type="search"], input[type="text"] {
-    width: 100%;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text);
-    font-size: 14px;
-  }
-  button {
-    border: none;
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-size: 14px;
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
     font-weight: 600;
-    cursor: pointer;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 4px;
   }
-  button.primary { background: var(--accent); color: white; }
-  button.secondary { background: var(--border); color: var(--text); }
-  button:disabled { opacity: 0.5; }
-  .app-list { max-height: 46vh; overflow-y: auto; margin-top: 10px; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .topbar h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    margin: 4px 0 0;
+  }
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .status-pill .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-faint);
+    flex-shrink: 0;
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+  }
+  .status-pill.is-live .dot {
+    background: var(--signal);
+    box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.15);
+  }
+  .status-pill.is-down .dot { background: var(--danger); }
+
+  /* ---------- panels ---------- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+
+  /* ---------- signature: luminance clamp diagram ---------- */
+  .signature-panel { padding: 18px 18px 14px; }
+  .clamp-viz { display: block; width: 100%; height: auto; overflow: visible; }
+  .clamp-viz .ghost {
+    fill: none;
+    stroke: var(--text-faint);
+    stroke-width: 1.5;
+    stroke-dasharray: 3 5;
+    opacity: 0.6;
+  }
+  .clamp-viz .ceiling {
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+  }
+  .clamp-viz .floor { stroke: var(--border-soft); stroke-width: 1; }
+  .clamp-viz .real {
+    fill: none;
+    stroke: url(#nitsGradient);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .clamp-viz .clamp-dot { fill: var(--nits-peak); }
+  .clamp-viz .clamp-ring {
+    fill: none;
+    stroke: var(--nits-high);
+    stroke-width: 1.5;
+    opacity: 0.55;
+  }
+  .clamp-viz text {
+    font-family: var(--font-mono);
+    fill: var(--text-faint);
+    font-size: 9px;
+    letter-spacing: 0.02em;
+  }
+  .clamp-viz .label-hdr { fill: var(--text-muted); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .clamp-viz .real {
+      stroke-dasharray: 420;
+      stroke-dashoffset: 420;
+      animation: draw-clamp 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+    }
+    .clamp-viz .clamp-ring {
+      animation: ring-pulse 2.6s ease-out 1.3s infinite;
+    }
+  }
+  @keyframes draw-clamp { to { stroke-dashoffset: 0; } }
+  @keyframes ring-pulse {
+    0% { r: 4; opacity: 0.55; }
+    75% { r: 11; opacity: 0; }
+    100% { r: 11; opacity: 0; }
+  }
+
+  .signature-caption {
+    margin: 12px 2px 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+
+  /* ---------- mode readout ---------- */
+  .mode-panel {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+  }
+  .mode-glyph {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    transition: border-color 0.25s ease, background 0.25s ease;
+  }
+  .mode-glyph svg { width: 18px; height: 18px; }
+  .mode-panel.is-scoped .mode-glyph {
+    background: linear-gradient(135deg, rgba(74,124,255,0.16), rgba(255,180,84,0.16));
+    border-color: rgba(255,180,84,0.35);
+  }
+  .mode-label {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    margin: 0;
+    background: var(--gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .mode-sub {
+    margin: 3px 0 0;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  /* ---------- targets panel ---------- */
+  .targets-panel { padding-bottom: 10px; }
+  .targets-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 11px 13px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: var(--font-ui);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .search-input::placeholder { color: var(--text-faint); }
+  .search-input:focus-visible {
+    border-color: var(--nits-low);
+    box-shadow: 0 0 0 3px rgba(74, 124, 255, 0.18);
+  }
+
+  .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 4px;
+  }
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .chip:active { background: var(--surface-2); color: var(--text); }
+  .chip:focus-visible { outline: 2px solid var(--nits-low); outline-offset: 2px; }
+
+  .app-list {
+    max-height: 42vh;
+    overflow-y: auto;
+    margin: 8px -6px 0;
+    padding: 0 6px;
+  }
   .app-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 4px;
-    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    padding: 9px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.12s ease;
   }
-  .app-row:last-child { border-bottom: none; }
-  .app-row .meta { flex: 1; min-width: 0; }
-  .app-row .label { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .app-row .pkg { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .app-row input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
-  .status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
-  .footer-actions { position: sticky; bottom: 0; display: flex; gap: 10px; padding-top: 4px; }
-  .footer-actions button { flex: 1; }
-  .empty-hint { font-size: 13px; color: var(--muted); padding: 8px 4px; }
+  .app-row:active { background: var(--surface-2); }
+
+  .avatar {
+    width: 34px; height: 34px;
+    border-radius: 9px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.92);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  }
+
+  .app-meta { flex: 1; min-width: 0; }
+  .app-label {
+    font-size: 14.5px;
+    font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .app-pkg {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+
+  .check-wrap {
+    position: relative;
+    width: 24px; height: 24px;
+    flex-shrink: 0;
+  }
+  .check-wrap input {
+    position: absolute; inset: 0;
+    opacity: 0; margin: 0; cursor: pointer;
+  }
+  .check-box {
+    position: absolute; inset: 0;
+    border-radius: 7px;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    transition: all 0.15s ease;
+    pointer-events: none;
+  }
+  .check-wrap input:checked ~ .check-box {
+    background: var(--gradient);
+    border-color: transparent;
+  }
+  .check-box::after {
+    content: "";
+    position: absolute;
+    left: 7px; top: 3px;
+    width: 5px; height: 10px;
+    border: solid #06070a;
+    border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg);
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  .check-wrap input:checked ~ .check-box::after { opacity: 1; }
+  .check-wrap input:focus-visible ~ .check-box { outline: 2px solid var(--nits-low); outline-offset: 2px; }
+
+  .empty-hint {
+    padding: 22px 8px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .manual-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+  }
+  .manual-input {
+    flex: 1; min-width: 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    outline: none;
+  }
+  .manual-input::placeholder { color: var(--text-faint); }
+  .manual-input:focus-visible { border-color: var(--nits-low); }
+
+  .btn-ghost {
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .btn-ghost:active { background: var(--surface-3); }
+
+  .status-line {
+    min-height: 16px;
+    margin: 10px 2px 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .status-line.is-error { color: var(--danger); }
+
+  /* ---------- footer ---------- */
+  .footer-actions {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--bg) 60%, transparent);
+  }
+  .footer-actions .inner {
+    display: flex;
+    gap: 10px;
+    max-width: 560px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .btn {
+    flex: 1;
+    padding: 13px 16px;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.08s ease, opacity 0.15s ease;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.45; pointer-events: none; }
+  .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:active { background: var(--surface-3); }
+  .btn-primary { background: var(--gradient); color: #100a02; }
+  .btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 </style>
 </head>
 <body>
-  <h1>Disable HDR</h1>
-  <p class="sub">
-    Hides HDR support from apps via Zygisk (LSPlant + Dobby, self-contained -
-    no LSPosed needed). Pick specific apps below, or leave everything
-    unchecked to apply it everywhere.
-  </p>
+  <div class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Zygisk module</p>
+        <h1>Disable HDR</h1>
+        <p class="version" id="version"></p>
+      </div>
+      <div class="status-pill" id="statusPill">
+        <span class="dot"></span>
+        <span id="statusText">Checking…</span>
+      </div>
+    </header>
 
-  <div class="card">
-    <input type="search" id="search" placeholder="Search installed apps or type a package name…" />
-    <div id="appList" class="app-list"><div class="empty-hint">Loading installed apps…</div></div>
-    <div class="row" style="margin-top:10px;">
-      <input type="text" id="manualPkg" placeholder="com.example.app (add manually)" />
-      <button class="secondary" id="addManual">Add</button>
+    <section class="panel signature-panel">
+      <svg class="clamp-viz" viewBox="0 0 400 108" role="img" aria-label="Diagram of an HDR luminance curve being clamped flat at the SDR reference level">
+        <defs>
+          <linearGradient id="nitsGradient" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="var(--nits-low)" />
+            <stop offset="100%" stop-color="var(--nits-high)" />
+          </linearGradient>
+        </defs>
+        <line class="floor" x1="14" y1="92" x2="386" y2="92" />
+        <line class="ceiling" x1="14" y1="40" x2="386" y2="40" />
+        <text x="386" y="36" text-anchor="end">203 nits · SDR reference white</text>
+        <text class="label-hdr" x="18" y="16">HDR peaks, uncapped</text>
+        <path class="ghost" d="M14,92 C 80,88 130,52 168,30 C 206,8 250,-4 300,-14" />
+        <path class="real" d="M14,92 C 80,88 130,52 168,30 C 182,22 187,40 191,40 L 386,40" />
+        <circle class="clamp-ring" cx="191" cy="40" r="4" />
+        <circle class="clamp-dot" cx="191" cy="40" r="3" />
+      </svg>
+      <p class="signature-caption">Every matched app's signal gets clamped to SDR before it ever reaches the screen — no HDR metadata, no wide-gamut surface, no exceptions.</p>
+    </section>
+
+    <section class="panel mode-panel" id="modePanel">
+      <div class="mode-glyph">
+        <svg id="modeGlyphIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+      </div>
+      <div>
+        <p class="mode-label" id="modeLabel">GLOBAL</p>
+        <p class="mode-sub" id="modeSub">Applies to every app on this device</p>
+      </div>
+    </section>
+
+    <section class="panel targets-panel">
+      <div class="targets-head">
+        <p class="eyebrow" style="margin:0;">Targets</p>
+      </div>
+      <input type="search" id="search" class="search-input" placeholder="Search apps or paste a package name…" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <div class="row-actions">
+        <button class="chip" id="selectAll" type="button">Select all</button>
+        <button class="chip" id="clearAll" type="button">Clear</button>
+      </div>
+      <div class="app-list" id="appList"><div class="empty-hint">Loading installed apps…</div></div>
+      <div class="manual-row">
+        <input type="text" id="manualPkg" class="manual-input" placeholder="com.example.app" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button class="btn-ghost" id="addManual" type="button">Add</button>
+      </div>
+      <p class="status-line" id="statusLine"></p>
+    </section>
+  </div>
+
+  <footer class="footer-actions">
+    <div class="inner">
+      <button class="btn btn-secondary" id="reload" type="button">Reload</button>
+      <button class="btn btn-primary" id="save" type="button">Save targets</button>
     </div>
-    <div id="status" class="status"></div>
-  </div>
-
-  <div class="footer-actions">
-    <button class="secondary" id="reload">Reload</button>
-    <button class="primary" id="save">Save</button>
-  </div>
+  </footer>
 
   <script type="module">
     import { exec, toast, listPackages, getPackagesInfo } from "./kernelsu.js";
 
-    const TARGETS_PATH = "/data/adb/modules/disable_hdr/targets.txt";
+    const MODULE_DIR = "/data/adb/modules/disable_hdr";
+    const TARGETS_PATH = `${MODULE_DIR}/targets.txt`;
     const PKG_RE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
 
-    const appListEl = document.getElementById("appList");
-    const searchEl = document.getElementById("search");
-    const statusEl = document.getElementById("status");
-    const manualPkgEl = document.getElementById("manualPkg");
+    const el = (id) => document.getElementById(id);
+    const appListEl = el("appList");
+    const searchEl = el("search");
+    const statusLineEl = el("statusLine");
+    const manualPkgEl = el("manualPkg");
+    const statusPillEl = el("statusPill");
+    const statusTextEl = el("statusText");
+    const modePanelEl = el("modePanel");
+    const modeLabelEl = el("modeLabel");
+    const modeSubEl = el("modeSub");
+    const versionEl = el("version");
+    const saveBtn = el("save");
 
-    /** @type {{packageName:string, appLabel:string, isSystem?:boolean}[]} */
+    /** @type {{packageName:string, appLabel:string}[]} */
     let allApps = [];
     /** @type {Set<string>} */
     let selected = new Set();
 
+    function setStatusLine(text, isError = false) {
+      statusLineEl.textContent = text;
+      statusLineEl.classList.toggle("is-error", isError);
+    }
+
     function friendlyNameFromPackage(pkg) {
       const last = pkg.split(".").pop() || pkg;
       return last.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    // Deterministic hue from the package name, so each app gets a stable,
+    // distinct avatar color across reloads instead of a random one.
+    function pkgHue(pkg) {
+      let h = 0;
+      for (let i = 0; i < pkg.length; i++) h = (h * 31 + pkg.charCodeAt(i)) >>> 0;
+      return h % 360;
     }
 
     async function loadTargets() {
@@ -121,20 +542,27 @@
         const { errno, stdout } = await exec(`cat ${TARGETS_PATH} 2>/dev/null`);
         if (errno !== 0) return new Set();
         return new Set(
-          stdout
-            .split("\n")
-            .map((l) => l.trim())
-            .filter((l) => l && !l.startsWith("#"))
+          stdout.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"))
         );
       } catch {
         return new Set();
       }
     }
 
+    async function loadVersion() {
+      try {
+        const { errno, stdout } = await exec(`cat ${MODULE_DIR}/module.prop 2>/dev/null`);
+        if (errno !== 0) return;
+        const m = stdout.match(/^version=(.+)$/m);
+        if (m) versionEl.textContent = m[1].trim();
+      } catch {
+        /* leave version line empty */
+      }
+    }
+
     async function loadInstalledApps() {
-      // Preferred path: the official listPackages/getPackagesInfo API (added
-      // in newer KernelSU Manager builds) gives real app labels. It's wrapped
-      // defensively since older Manager versions won't implement it natively.
+      // Preferred: the real listPackages/getPackagesInfo API (newer Manager
+      // builds) for actual app labels, not just package names.
       try {
         const names = listPackages("user");
         if (names && names.length) {
@@ -145,19 +573,15 @@
           return names.map((pkg) => ({ packageName: pkg, appLabel: friendlyNameFromPackage(pkg) }));
         }
       } catch {
-        /* fall through to shell-based listing below */
+        /* fall through */
       }
-
       // Fallback: always works, just without real app labels.
       try {
         const { errno, stdout } = await exec("pm list packages -3");
         if (errno === 0) {
-          return stdout
-            .split("\n")
-            .map((l) => l.trim())
+          return stdout.split("\n").map((l) => l.trim())
             .filter((l) => l.startsWith("package:"))
-            .map((l) => l.slice("package:".length))
-            .filter(Boolean)
+            .map((l) => l.slice("package:".length)).filter(Boolean)
             .map((pkg) => ({ packageName: pkg, appLabel: friendlyNameFromPackage(pkg) }));
         }
       } catch {
@@ -166,93 +590,149 @@
       return [];
     }
 
-    function renderList() {
+    function currentlyFiltered() {
       const query = searchEl.value.trim().toLowerCase();
-      const filtered = allApps.filter(
+      return allApps.filter(
         (a) => !query || a.appLabel.toLowerCase().includes(query) || a.packageName.toLowerCase().includes(query)
       );
+    }
 
-      // Selected-but-not-in-the-installed-list entries (added manually, or
-      // the app was uninstalled since) still get shown so you don't lose them.
+    function updateModeReadout() {
+      const n = selected.size;
+      const scoped = n > 0;
+      modePanelEl.classList.toggle("is-scoped", scoped);
+      modeLabelEl.textContent = scoped ? "SCOPED" : "GLOBAL";
+      modeSubEl.textContent = scoped
+        ? `Applies to ${n} selected app${n === 1 ? "" : "s"}`
+        : "Applies to every app on this device";
+    }
+
+    function renderList() {
+      const query = searchEl.value.trim().toLowerCase();
+      const filtered = currentlyFiltered();
+
+      // Selected-but-not-installed entries (added manually, or the app was
+      // since uninstalled) still show up, so a saved selection is never
+      // silently dropped from view.
       const shown = new Map(filtered.map((a) => [a.packageName, a]));
       for (const pkg of selected) {
         if (!shown.has(pkg) && (!query || pkg.toLowerCase().includes(query))) {
           shown.set(pkg, { packageName: pkg, appLabel: friendlyNameFromPackage(pkg) });
         }
       }
-
       const rows = [...shown.values()].sort((a, b) => a.appLabel.localeCompare(b.appLabel));
 
       if (rows.length === 0) {
-        appListEl.innerHTML = `<div class="empty-hint">No matching apps.</div>`;
+        appListEl.innerHTML = query
+          ? `<div class="empty-hint">No apps match &ldquo;${query}&rdquo;.</div>`
+          : `<div class="empty-hint">Couldn't list installed apps.<br>You can still target apps by package name below.</div>`;
+        updateModeReadout();
         return;
       }
 
-      appListEl.innerHTML = "";
+      const frag = document.createDocumentFragment();
       for (const app of rows) {
+        const pkg = app.packageName;
+        const hue = pkgHue(pkg);
+        const initial = (app.appLabel.trim()[0] || "?").toUpperCase();
+
         const row = document.createElement("label");
         row.className = "app-row";
         row.innerHTML = `
-          <input type="checkbox" data-pkg="${app.packageName}" ${selected.has(app.packageName) ? "checked" : ""} />
-          <div class="meta">
-            <div class="label">${app.appLabel}</div>
-            <div class="pkg">${app.packageName}</div>
+          <div class="avatar" style="background:hsl(${hue} 58% 40%)">${initial}</div>
+          <div class="app-meta">
+            <div class="app-label">${app.appLabel}</div>
+            <div class="app-pkg">${pkg}</div>
+          </div>
+          <div class="check-wrap">
+            <input type="checkbox" ${selected.has(pkg) ? "checked" : ""} />
+            <span class="check-box"></span>
           </div>`;
         row.querySelector("input").addEventListener("change", (e) => {
-          if (e.target.checked) selected.add(app.packageName);
-          else selected.delete(app.packageName);
+          if (e.target.checked) selected.add(pkg);
+          else selected.delete(pkg);
+          updateModeReadout();
         });
-        appListEl.appendChild(row);
+        frag.appendChild(row);
       }
+      appListEl.innerHTML = "";
+      appListEl.appendChild(frag);
+      updateModeReadout();
     }
 
     async function init() {
-      statusEl.textContent = "";
+      setStatusLine("");
       const [targets, apps] = await Promise.all([loadTargets(), loadInstalledApps()]);
       selected = targets;
       allApps = apps;
-      if (apps.length === 0) {
-        statusEl.textContent = "Couldn't list installed apps - you can still add packages manually below.";
-      }
       renderList();
+    }
+
+    function markConnected(ok) {
+      statusPillEl.classList.toggle("is-live", ok);
+      statusPillEl.classList.toggle("is-down", !ok);
+      statusTextEl.textContent = ok ? "Root bridge connected" : "Root bridge unavailable";
+      saveBtn.disabled = !ok;
     }
 
     searchEl.addEventListener("input", renderList);
 
-    document.getElementById("addManual").addEventListener("click", () => {
+    el("selectAll").addEventListener("click", () => {
+      currentlyFiltered().forEach((a) => selected.add(a.packageName));
+      renderList();
+    });
+    el("clearAll").addEventListener("click", () => {
+      currentlyFiltered().forEach((a) => selected.delete(a.packageName));
+      renderList();
+    });
+
+    el("addManual").addEventListener("click", () => {
       const pkg = manualPkgEl.value.trim();
       if (!PKG_RE.test(pkg)) {
-        statusEl.textContent = `"${pkg}" doesn't look like a valid package name.`;
+        setStatusLine(`"${pkg}" doesn't look like a valid package name — try something like com.example.app.`, true);
         return;
       }
       selected.add(pkg);
       manualPkgEl.value = "";
-      statusEl.textContent = "";
+      setStatusLine("");
       renderList();
     });
+    manualPkgEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") el("addManual").click();
+    });
 
-    document.getElementById("reload").addEventListener("click", init);
+    el("reload").addEventListener("click", init);
 
-    document.getElementById("save").addEventListener("click", async () => {
+    saveBtn.addEventListener("click", async () => {
       const lines = [...selected].filter((p) => PKG_RE.test(p)).sort();
-      // Every entry has already been validated against PKG_RE above, so it's
-      // safe to interpolate directly into the shell command.
+      // Every entry is already validated against PKG_RE, so it's safe to
+      // interpolate directly into the shell command.
       const cmd = lines.length
         ? `{ ${lines.map((p) => `echo ${p}`).join("; ")}; } > ${TARGETS_PATH}`
         : `: > ${TARGETS_PATH}`;
       try {
         const { errno, stderr } = await exec(cmd);
         if (errno === 0) {
-          toast(lines.length ? `Saved - ${lines.length} app(s) targeted` : "Saved - applies to all apps now");
+          toast(lines.length ? `Saved — now targets ${lines.length} app${lines.length === 1 ? "" : "s"}` : "Saved — applies to all apps now");
+          setStatusLine("");
         } else {
-          toast("Save failed: " + stderr);
+          setStatusLine(`Save failed: ${stderr || "unknown error"}`, true);
         }
       } catch (e) {
-        toast("Save failed: " + e);
+        setStatusLine(`Save failed: ${e}`, true);
       }
     });
 
-    init();
+    (async function lifecycleInitializer() {
+      let ok = false;
+      for (let i = 0; i < 20; i++) {
+        if (typeof ksu !== "undefined") { ok = true; break; }
+        await new Promise((r) => setTimeout(r, 75));
+      }
+      markConnected(ok);
+      loadVersion();
+      init();
+    })();
   </script>
 </body>
 </html>
