@@ -36,28 +36,162 @@ include(FetchContent)
 # itself, so nothing external needs to be found at load time. ANDROID_STL
 # is already forced to c++_static in native/build.gradle.kts, so this
 # applies uniformly to LSPlant's sources too - no libc++_shared.so either.
-#
-# GIT_TAG is pinned to "master" so this fix applies cleanly regardless of
-# exactly which release is newest right now. Once CI is green, pin this to
-# a real release tag instead (see https://github.com/LSPosed/LSPlant/tags)
-# for reproducible builds.
 # -----------------------------------------------------------------------
-# GIT_SUBMODULES "" - LSPlant's repo has git submodules (test fixtures
-# under test/src/main/jni/external/, referenced over SSH as
-# git@github.com:LSPosed/<name>.git). GitHub Actions runners have no SSH
-# key configured for that, so a normal recursive submodule checkout fails
-# outright ("Could not read from remote repository"). We only compile
-# lsplant/ (the library itself, filtered below to exclude test/ anyway),
-# so skip submodules entirely rather than trying to authenticate for
-# fixtures we don't need.
-FetchContent_Declare(
-    lsplant_src
-    GIT_REPOSITORY https://github.com/LSPosed/LSPlant.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
-    GIT_SUBMODULES ""
-)
-FetchContent_Populate(lsplant_src)
+# 2026-08-06 update - the next bug this caused, and why the fix below
+# looks the way it does:
+#
+# Pinning GIT_TAG to "master" (as this file did until now) traded the
+# dynamic-linking bug above for a reproducibility bug: master is a moving
+# target, and it moved. CI started failing with:
+#
+#   FAILED: native/CMakeFiles/lsplant_static.dir/.../lsplant.cc.o
+#   .../_deps/lsplant_src-src/lsplant/src/main/jni/lsplant.cc:25:8:
+#   fatal error: module 'lsplant' not found
+#      25 | module lsplant;
+#         | ~~~~~~~^~~~~~~
+#
+# That line is standard C++20 - it declares lsplant.cc as the
+# *implementation unit* of a named module "lsplant"
+# (https://en.cppreference.com/w/cpp/language/modules). Compiling a file
+# like that requires a build system that scans sources for module
+# dependencies up front, compiles the corresponding *interface* unit into
+# a BMI first, and passes every consumer "-fmodule-file=lsplant=<path>" so
+# the compiler can find it - see Clang's own docs
+# (https://clang.llvm.org/docs/StandardCPlusPlusModules.html) and, for the
+# identical failure shape against a hand-written example,
+# https://github.com/llvm/llvm-project/issues/53661 ("Clang won't compile
+# C++20 module implementation units" without being told where the
+# interface's .pcm lives - same "module is not available" class of error
+# we hit here). CMake did not support any of that until 3.28 (Dec 2023),
+# six minor releases past what's in play here, and even 3.28 only enabled
+# it for Ninja/Visual-Studio generators paired with Clang 16+, GCC 14+, or
+# MSVC 14.34+ (https://cmake.org/cmake/help/latest/release/3.28.html;
+# Kitware's own announcement calls it exiting *experimental* status in
+# 3.28: https://www.kitware.com/import-cmake-the-experiment-is-over/).
+# What actually drives the compiler in this project is AGP's external
+# native build, invoking the NDK's bundled CMake 3.22.1
+# (/usr/local/lib/android/sdk/cmake/3.22.1/bin/ninja, per the CI log) -
+# which predates modules support entirely, experimental or not - and it
+# just runs "clang++ ... -c lsplant.cc -o lsplant.cc.o" per file, with no
+# scanning, no BMI, nothing. There's no flag that fixes this; the only fix
+# is making sure the LSPlant commit we fetch predates whatever commit
+# introduced that line.
+#
+# The obvious move - pin to LSPlant's last tagged release instead of
+# master - has its own trap. The last version actually published to Maven
+# Central is 6.4 (Apr 2024; confirmed independently via
+# https://mvnrepository.com/artifact/org.lsposed.lsplant/lsplant and
+# https://central.sonatype.com/artifact/org.lsposed.lsplant/lsplant/versions,
+# changelog "Try support for 16k page size / Fix riscv64 support"). LSPlant
+# did not support Android 16 yet as of a Nov 2025 upstream discussion
+# asking exactly that (https://github.com/LSPosed/LSPlant/discussions/161,
+# "when supports android 16.", unanswered) - support was added sometime
+# after, and this project targets Android 16. Pinning to 6.4 would fix
+# *this* build and silently reintroduce "hooks don't work on the OS
+# version this module exists for", which is worse than a build failure -
+# a build failure is loud, a wrong ART offset is not.
+#
+# github.com blocks automated fetches of its own /tags and /commits list
+# views (robots.txt), and the read-only mirrors tried during this
+# investigation (git.haisto.cn, rat.dev) block the same way, so there was
+# no way to browse LSPlant's history directly to hand-pick "the commit
+# right before the modules refactor, but on/after Android 16 support
+# landed" from outside the repo. What's resolvable instead: LSPlant's
+# GitHub org activity page shows continued commits through Aug 3, 2026 -
+# three days before the CI run above - and a Gitea mirror's rendered log
+# (also not fetchable directly, but its search-indexed content was) shows
+# a "Update supported Android versions in README" commit dated 2026-04-25.
+# So the safe window is real but its edges are estimated, not verified -
+# see the two knobs below, and README.md's "Sources consulted" section
+# for the complete trail with every source that went into this estimate
+# and exactly what each one does and doesn't confirm.
+#
+# LSPLANT_GIT_TAG: set this if you've picked an exact tag/branch/commit
+# yourself (e.g. by actually opening
+# https://github.com/LSPosed/LSPlant/commits/master in a browser, which
+# this investigation could not do). Empty (the default) means auto-resolve
+# instead, via LSPLANT_PIN_BEFORE below - "last commit on master strictly
+# before this date" is a far softer failure mode than a hardcoded tag
+# guessed from outside the repo: if the date estimate is wrong, the
+# module-declaration guard further down this file fails the *configure*
+# step immediately with a plain-English explanation, and correcting course
+# is a one-line change to LSPLANT_PIN_BEFORE - not another multi-hour
+# bug-report round trip through a cryptic clang error.
+# -----------------------------------------------------------------------
+set(LSPLANT_GIT_TAG "" CACHE STRING "Exact LSPlant git tag/branch/commit to build. Empty (default) auto-resolves via LSPLANT_PIN_BEFORE instead - see the comment above. Set this once you've verified a specific ref yourself; \"6.4\" is a confirmed-real, confirmed-buildable fallback that predates Android 16 ART support (see README.md).")
+set(LSPLANT_PIN_BEFORE "2026-07-01T00:00:00Z" CACHE STRING "Only used when LSPLANT_GIT_TAG is empty. Resolves to the newest commit on LSPlant's master branch strictly before this UTC timestamp. See README.md for how this date was chosen, and move it earlier if the module-declaration guard below still trips.")
+
+find_package(Git REQUIRED)
+
+set(lsplant_src_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/lsplant_src-src")
+
+if(LSPLANT_GIT_TAG)
+    # Manual pin: the same shallow-clone FetchContent flow this file
+    # always used for a single fixed ref, just parameterized instead of
+    # hardcoded to "master".
+    message(STATUS "LSPlant: using manually pinned LSPLANT_GIT_TAG=${LSPLANT_GIT_TAG}")
+    # GIT_SUBMODULES "" - LSPlant's repo has git submodules (test fixtures
+    # under test/src/main/jni/external/, referenced over SSH as
+    # git@github.com:LSPosed/<name>.git). GitHub Actions runners have no
+    # SSH key configured for that, so a normal recursive submodule
+    # checkout fails outright ("Could not read from remote repository").
+    # We only compile lsplant/ (the library itself, filtered below to
+    # exclude test/ anyway), so skip submodules entirely rather than
+    # trying to authenticate for fixtures we don't need.
+    FetchContent_Declare(
+        lsplant_src
+        GIT_REPOSITORY https://github.com/LSPosed/LSPlant.git
+        GIT_TAG        ${LSPLANT_GIT_TAG}
+        GIT_SHALLOW    TRUE
+        GIT_SUBMODULES ""
+    )
+    FetchContent_Populate(lsplant_src)
+else()
+    # Auto-resolve: needs real ancestry to walk (git rev-list against
+    # history), so this is a normal clone rather than FetchContent's
+    # shallow single-commit fetch. Reuses a previous checkout if one is
+    # already there instead of re-cloning every configure; always fetches
+    # first so a stale local clone can't pin to yesterday's idea of
+    # "newest before the cutoff".
+    if(NOT EXISTS "${lsplant_src_SOURCE_DIR}/.git")
+        message(STATUS "LSPlant: cloning full history (auto-resolving newest commit before ${LSPLANT_PIN_BEFORE})")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" clone --no-checkout
+                    https://github.com/LSPosed/LSPlant.git "${lsplant_src_SOURCE_DIR}"
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+    else()
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" fetch --quiet origin master
+            WORKING_DIRECTORY "${lsplant_src_SOURCE_DIR}"
+            COMMAND_ERROR_IS_FATAL ANY
+        )
+    endif()
+
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-list -n 1 "--before=${LSPLANT_PIN_BEFORE}" origin/master
+        WORKING_DIRECTORY "${lsplant_src_SOURCE_DIR}"
+        OUTPUT_VARIABLE LSPLANT_RESOLVED_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE LSPLANT_REVLIST_RESULT
+    )
+    if(NOT LSPLANT_REVLIST_RESULT EQUAL 0 OR NOT LSPLANT_RESOLVED_SHA)
+        message(FATAL_ERROR
+            "LSPlant: could not resolve any commit on master before "
+            "LSPLANT_PIN_BEFORE=${LSPLANT_PIN_BEFORE}. Either that date is "
+            "earlier than LSPlant's first commit, or the clone at "
+            "${lsplant_src_SOURCE_DIR} is broken - delete that directory "
+            "and reconfigure, or move LSPLANT_PIN_BEFORE later.")
+    endif()
+    message(STATUS "LSPlant: resolved ${LSPLANT_RESOLVED_SHA} as the newest commit before ${LSPLANT_PIN_BEFORE}")
+
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -c advice.detachedHead=false checkout --force ${LSPLANT_RESOLVED_SHA}
+        WORKING_DIRECTORY "${lsplant_src_SOURCE_DIR}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+endif()
 
 file(GLOB_RECURSE LSPLANT_SOURCES CONFIGURE_DEPENDS
     "${lsplant_src_SOURCE_DIR}/lsplant/*.cc"
@@ -72,6 +206,47 @@ if(NOT LSPLANT_SOURCES)
         "https://github.com/LSPosed/LSPlant/tree/master/lsplant for the "
         "current layout and update the glob + include dirs below.")
 endif()
+
+# -----------------------------------------------------------------------
+# Guardrail: refuse, loudly, at configure time, if any fetched LSPlant
+# source turns out to be a C++20 module declaration - see the long
+# comment above LSPLANT_GIT_TAG for why nothing in this toolchain can
+# compile one, and why that's a "pick a different commit" problem rather
+# than a "add a compiler flag" problem. This is deliberately a simple
+# heuristic (does some line look like a bare "module x;" / "export module
+# x;" statement) rather than a real C++ parser - good enough to catch this
+# specific regression class, the same way check_self_contained.cmake's
+# readelf grep is good enough for its job without being a real ELF
+# library. If LSPlant ever also starts requiring "import <name>;" for its
+# own modules elsewhere, extend the REGEX below the same way.
+# -----------------------------------------------------------------------
+foreach(lsplant_src_file ${LSPLANT_SOURCES})
+    # Plain spaces only (no \t escape) - deliberately not relying on how
+    # CMake's string-escaping vs. its regex engine each treat "\t", since
+    # that couldn't be tested in this sandbox (no local cmake binary - see
+    # README.md). The one real-world instance of this line seen so far
+    # (the CI log quoted above) has zero leading indentation anyway.
+    file(STRINGS "${lsplant_src_file}" LSPLANT_MODULE_DECL_MATCH
+         REGEX "^ *(export +)?module +[A-Za-z_][A-Za-z0-9_.]* *;")
+    if(LSPLANT_MODULE_DECL_MATCH)
+        get_filename_component(LSPLANT_SRC_BASENAME "${lsplant_src_file}" NAME)
+        message(FATAL_ERROR
+            "${LSPLANT_SRC_BASENAME} declares a C++20 module "
+            "(\"${LSPLANT_MODULE_DECL_MATCH}\") - this toolchain (CMake "
+            "3.22.1, as bundled with the Android NDK / AGP's external "
+            "native build) cannot compile C++20 module implementation "
+            "units; see the comment above LSPLANT_GIT_TAG near the top of "
+            "this file. The commit currently checked out under "
+            "${lsplant_src_SOURCE_DIR} (resolved from "
+            "LSPLANT_PIN_BEFORE=${LSPLANT_PIN_BEFORE}) has drifted onto a "
+            "version of LSPlant that uses C++20 modules. Fix: move "
+            "LSPLANT_PIN_BEFORE earlier, delete "
+            "${lsplant_src_SOURCE_DIR} so it re-clones, and reconfigure - "
+            "or set LSPLANT_GIT_TAG to a specific older ref you've "
+            "verified yourself against "
+            "https://github.com/LSPosed/LSPlant/commits/master.")
+    endif()
+endforeach()
 
 set(LSPLANT_INCLUDE_DIRS "")
 foreach(candidate
