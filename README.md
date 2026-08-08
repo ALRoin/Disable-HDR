@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-# Makes apps believe the display has no HDR support.
-### This module doesn't fully work as intended. I'll try to find another solution.
-• Instagram still appears to play HDR videos, so this module doesn't affect Instagram.
-=======
 # Disable HDR (KernelSU + Zygisk)
 
 Hides HDR support from apps so they fall back to SDR playback, on Android 16.
@@ -175,12 +170,17 @@ packages, just without pretty app names).
   what specifically failed.
 - **Which exact LSPlant snapshot gets built is resolved automatically, not
   frozen to one fixed version** - see [Build fix, part
-  2](#build-fix-part-2-from-date-guessing-to-actually-searching-history-2026-08-07).
+  2](#build-fix-part-2-from-date-guessing-to-actually-searching-history-2026-08-07)
+  and [part 3](#build-fix-part-3-the-guard-only-checked-half-the-syntax-2026-08-07).
   By design, so the build keeps working as LSPlant adds support for newer
   Android releases without needing a manual bump here - but it also means
   two builds run months apart can legitimately fetch different LSPlant
-  code. Set `LSPLANT_GIT_TAG` explicitly (see [Building](#building)) if you
-  need a fully reproducible, audit-pinned build instead.
+  code, and if the build ever prints a `LSPlant: the resolved commit ...`
+  `WARNING` during configure, it means the newest buildable commit it
+  could find predates LSPlant's Android 16 support - check part 3 above
+  before trusting hooks on Android 16 specifically. Set `LSPLANT_GIT_TAG`
+  explicitly (see [Building](#building)) if you need a fully reproducible,
+  audit-pinned build instead.
 - **On crDroid for the Mi 9 (cepheus) specifically:** this ROM's own
   release thread has multiple independent reports of KernelSU-Next and its
   bundled Zygisk implementation getting out of sync after a ROM or
@@ -633,6 +633,256 @@ date to get wrong) - and that's a real bug report, not a one-line fix.
 | `github.com/LSPosed/LSPlant`'s `/tags` and `/commits` (and two mirrors) are still not directly browsable from this sandbox | Repeat direct fetch attempts, all still `robots.txt`-disallowed |
 | The search loop correctly finds the newest clean commit even against non-monotonic history (dirty → clean → dirty-again patterns) | Local simulation in this sandbox (real `git` + `grep`, throwaway repo built to mirror the real timeline) - not a substitute for testing against the real LSPlant repository or the real CMake parser |
 
+## Build fix, part 3: the guard only checked half the syntax (2026-08-07)
+
+### The search loop worked. The definition of "clean" was incomplete.
+
+The `logs_84687441446.zip` CI run shows the search loop from part 2 doing
+exactly what it was built to do - the log is one long chain of `HEAD is
+now at <sha> <message>` / `Previous HEAD position was <sha> <message>`
+pairs, git's own output from 51 consecutive `checkout --force` calls,
+walking backward from `origin/master`'s tip. It correctly rejected 50
+commits in a row and stopped at the 51st, `e2a35a4` ("Setup Android SDK"),
+because that one has no `module lsplant;` self-declaration. Then the
+*build* step failed anyway, on a different line:
+
+```
+lsplant.cc:15:8: fatal error: module 'dex_builder' not found
+   15 | import dex_builder;
+```
+
+Column 8 lands exactly on the `d` of `dex_builder` in `import
+dex_builder;` - confirmed by counting characters, not just eyeballing it.
+This is a **named-module import**, a second, distinct piece of C++20
+modules grammar from the self-declaration the guard already checked for.
+The guard was checking for one half of the syntax that makes a file
+unbuildable here and had never been told about the other half - there
+was no reason to know about it until a real build hit it.
+
+### `dex_builder` is not part of LSPlant. It's a separate repository.
+
+This took the investigation somewhere the first two rounds didn't go:
+[`LSPosed/DexBuilder`](https://github.com/LSPosed/DexBuilder) is its own
+repo - "Generate dex file by c++", built via a plain `Android.mk`
+(old-style `ndk-build`, not CMake, and its `LOCAL_MODULE := dex_builder`
+is just an ndk-build target name, unrelated to C++20 "named modules"
+despite the identical word). LSPlant's own official build evidently wraps
+that dependency as a real C++20 module named `dex_builder` and imports it
+from `lsplant.cc` - which means this isn't "one file in LSPlant's own
+tree got converted," it's LSPlant importing a *second*, independently
+versioned project through the same modules mechanism this toolchain can't
+support. Re-checked whether LSPlant had published anything past the `6.4`
+Maven release in the meantime (it hadn't - `6.4`, April 2024, is still
+the newest version listed on both
+[mvnrepository.com](https://mvnrepository.com/artifact/org.lsposed.lsplant/lsplant)
+and [central.sonatype.com](https://central.sonatype.com/artifact/org.lsposed.lsplant/lsplant)),
+so there's no newer prebuilt to fall back to either.
+
+What this means for how deep the modules adoption actually goes: still
+genuinely unclear from outside the repo. `36e3f80` ("Update dex builder"),
+visible in the same walk, is far too vague a commit message to tell
+whether `dex_builder` was already an *imported module* at that point or
+just an updated vendored copy of the old kind. This round's fix doesn't
+try to resolve that uncertainty by more archaeology - it makes the build
+resilient to not knowing.
+
+### The fix: check for both syntax shapes, and stop being silent about Android 16 coverage
+
+Two changes to `native/src/main/cpp/CMakeLists.txt`, both in the same
+regex-based checking logic added in part 2:
+
+1. **The check now matches `import x;` and `export import x;`, as well as
+   `module x;` / `export module x;`.** Same spot (the search loop) and
+   same spot again (the manual-pin defense-in-depth guard). `export
+   import` (re-exporting an import from within a module interface) hasn't
+   actually been seen in LSPlant's history yet - it's the same statement
+   family as the other three and cheap to cover now rather than after a
+   fourth CI round finds it first.
+2. **A new, non-fatal check runs after the search resolves a commit:**
+   `git merge-base --is-ancestor <resolved> 16205e71aa...` (the "Hook
+   ReinitializeMethodsCode on A16+" commit from parts 1-2, 2025-07-13).
+   If the resolved commit is at or before that point, the build prints a
+   `message(WARNING ...)` - loud, named, impossible to miss in a CI log -
+   and **still finishes the build**. A commit that predates Android 16
+   support still compiles and installs; failing the build over that would
+   be strictly worse than a clearly labeled warning, since a build that
+   works everywhere except Android 16 is still useful and still better
+   than no build. The point of the warning is to stop that gap from being
+   silent, not to block it.
+
+Both checks were verified locally the same way as before - not against
+the real repository (still no outbound network from this sandbox's
+command line), but against real `git`, with cases constructed specifically
+to test the new logic rather than re-testing what part 2 already covered:
+
+- The combined regex (`module`/`export module` OR `import`) correctly
+  matches `import dex_builder;`, indented or not, and dotted names like
+  `import foo.bar;` - while still correctly ignoring `int module = 5;`,
+  `ModuleLoader module_lsplant;`, `import_settings();`, and, new this
+  round, `import(dex_builder);` and `importer.run();` (both plausible
+  near-misses specifically because the real bug involves a function-like
+  use of the word "import" being one character away from the real thing).
+- `git merge-base --is-ancestor` was tested directly (not simulated) for
+  all three relevant orderings against a throwaway repo with a marked
+  "android16-hook" commit: a later commit correctly reports "not an
+  ancestor" (exit 1, no warning), an earlier one correctly reports "is an
+  ancestor" (exit 0, warning fires), and the boundary commit itself
+  correctly counts as an ancestor of itself (exit 0, warning fires) -
+  matching the CMake side's `EQUAL 0` check exactly.
+
+What still hasn't been verified against the real repository: whether the
+search, with the fixed check, lands on a commit *after* the Android 16
+floor or before it. That's exactly what the new warning is for - the next
+CI run's log will say so explicitly, either by staying silent (good) or
+by printing the warning above (meaning the modules adoption goes back
+further than 2025-07-13, and this project has a real decision to make -
+see below).
+
+### Where this goes if the next run still isn't clean
+
+Two build-time diagnostics now exist for two different failure shapes,
+and it's worth being explicit about what each one *means* for next steps,
+not just what it *prints*:
+
+- **The `FATAL_ERROR` module/import check fires again** → the regex
+  itself has a gap (a third syntax shape, e.g. `import <name>:<partition>;`
+  or a header-unit import) - same class of fix as this round, extend the
+  pattern.
+- **The Android-16-floor `WARNING` fires** → this is the more serious
+  case. It would mean every commit between LSPlant's tip and its very
+  first Android 16 hook uses C++20 modules somewhere - i.e. modules
+  adoption and Android 16 support arrived close enough together, or in
+  the wrong order, that "find an older clean commit" and "keep Android 16
+  support" are mutually exclusive on LSPlant's current `master`. If that
+  turns out to be true, patching the regex further stops being the right
+  move, and the real options become: (a) accept an LSPlant snapshot
+  without full Android 16 support for now, by pinning `LSPLANT_GIT_TAG`
+  explicitly to something before `16205e7`; (b) make this toolchain
+  genuinely modules-capable - a real CMake 3.28+/Ninja upgrade path
+  inside AGP's external native build, which is a materially bigger change
+  than anything done across these three rounds and not something to
+  attempt without being able to test it; or (c) go back to consuming
+  LSPlant as a prebuilt Maven artifact and solve the static-linking
+  problem from [What changed](#what-changed-from-the-original) a
+  different way. None of these are needed *yet* - only if the warning
+  actually fires - but it's worth knowing the decision tree in advance
+  rather than improvising it under a fourth CI failure.
+
+### Sources consulted for this fix
+
+| Claim | Source |
+| --- | --- |
+| Exact new failure: file, line, column, and the fact that the search loop itself ran and resolved a commit before failing | `logs_84687441446.zip` → `0_build.txt` (this project's own CI run, 2026-08-07) |
+| Column 8 is exactly where `dex_builder` starts in `import dex_builder;` | Direct character count in this sandbox (`"import dex_builder;".index('d')` → 7, so column 8) - pure local computation, no network |
+| `dex_builder` is a separate repository (`LSPosed/DexBuilder`), built via `Android.mk`/ndk-build, not part of LSPlant's own source tree | [github.com/LSPosed/DexBuilder](https://github.com/LSPosed/DexBuilder) - `Android.mk` and `dex_builder.cc` both directly fetched |
+| LSPlant has still not published anything past version `6.4` (April 2024) to Maven Central | Re-checked [mvnrepository.com](https://mvnrepository.com/artifact/org.lsposed.lsplant/lsplant) and [central.sonatype.com](https://central.sonatype.com/artifact/org.lsposed.lsplant/lsplant) |
+| The combined module/import `REGEX` correctly matches both syntax shapes and correctly ignores near-miss lines, including two new ones specific to `import` | Local test in this sandbox: 13 cases run directly against the regex with `grep -E`, including `import(dex_builder);` and `importer.run();` |
+| `git merge-base --is-ancestor` behaves as the new CMake check assumes for all three relevant orderings (strictly before / strictly after / equal to the Android-16-floor commit) | Local test in this sandbox: a throwaway repo with a marked commit, `git merge-base --is-ancestor` run directly (not simulated) for all three cases |
+
+## Is there a fundamentally different way to do this?
+
+Asked directly after the third CI failure in a row from the same
+underlying dependency, and worth answering directly rather than just
+patching the regex again and moving on. Two separate questions live
+inside it, and they have different answers.
+
+### "Is per-app native hooking the right approach at all, or is there a simpler lever?"
+
+The appealing alternative is a single system-wide switch - one property,
+flipped once at boot, instead of a native library injected into every app
+process. Two independent findings this round argue against it existing in
+a form that would actually work:
+
+- **Every real prior-art project doing something in this neighborhood does
+  it with app-level hooking, not a global switch.** An Xposed module that
+  makes "video enhancement work for every video application" had to
+  bypass a per-package whitelist check inside a specific system
+  component, one package at a time
+  ([XDA thread](https://xdaforums.com/t/xposed-a-xposed-module-to-make-video-enhancement-work-for-every-video-application.4158509/)).
+  Unlocking HDR in Netflix on unsupported devices is done by spoofing
+  device identity (`Build.MODEL`/`Build.MANUFACTURER`) through an Xposed
+  module so the app's own capability check believes it's a Pixel
+  ([Xiaomiui.net walkthrough](https://xiaomiui.net/how-to-enable-hdr-in-netflix-for-unsupported-devices-34106/)).
+  Neither reaches for a system property, because HDR eligibility on
+  Android isn't decided in one place - individual apps call
+  `Display.getHdrCapabilities()`, query `MediaCodecInfo`, or check `Build`
+  fields directly, and some (as the first thread found) apply their own
+  server-controlled whitelists on top. That's exactly why this project
+  hooks three separate call sites (`Display`, `MediaCodecInfo`, and direct
+  decoder-profile probing) instead of one - see [What it actually
+  hooks](#what-it-actually-hooks) - and prior art elsewhere hitting the
+  same wall independently is reasonable evidence that's not
+  over-engineering.
+- **A genuine, documented SurfaceFlinger property mechanism exists
+  (`SurfaceFlingerProperties`,
+  [source.android.com](https://source.android.com/docs/core/graphics/surfaceflinger-props)),
+  but testing a closely related one didn't work.** Android 13's "SDR
+  dimming" feature is gated by a pair of system properties, and someone
+  who actually flipped both of them on a rooted Pixel 6 Pro
+  [reported no observable change](https://www.esper.io/blog/android-sdr-dimming)
+  - the feature needed native SurfaceFlinger changes the properties alone
+  didn't trigger. That's a different feature, not proof that *no*
+  HDR-related property would work, but it's a concrete example of the
+  failure mode: these properties are read by native compositor code at
+  specific points, and getting the timing and the actual gate right from
+  outside AOSP source access is not something to assume works without
+  testing on the real device - which this sandbox, again, has no way to
+  do (see "What I verified locally, and what I could not" in the sections
+  above).
+
+Bottom line on this question: no evidence turned up for a simpler,
+reliable, single-point alternative, and real prior art solving adjacent
+problems converged on the same app-level hooking this project already
+does. That part of the architecture is very likely correct as-is.
+
+### "Is fighting LSPlant's build requirements forever the only option?"
+
+This is the question the last three sections actually bear on, and
+there's more honest daylight here than the question above:
+
+- **Keep pinning older commits (current approach).** Costs nothing extra
+  today, and the search loop makes it self-updating rather than a
+  hand-guessed date - but it has a shelf life. `LSPosed/LSPlant@0110cf7`
+  ("upgrade to ndk 29 an use module partition") reads as a deliberate,
+  permanent toolchain decision on LSPlant's side, not a transient
+  regression that might revert. Every month that passes without this
+  toolchain gaining real modules support, the newest buildable commit
+  gets relatively older next to LSPlant's actual tip.
+- **Make the toolchain itself modules-capable.** AGP genuinely supports
+  pointing at a CMake other than the NDK-bundled 3.22.1 - `cmake.dir=` in
+  `local.properties`, confirmed directly from
+  [Android's own Cmake DSL reference](https://developer.android.com/reference/tools/gradle-api/8.3/null/com/android/build/api/dsl/Cmake)
+  - which opens the door to CMake 3.28+ (the version that made C++20
+    modules support non-experimental, requiring Clang 16+/GCC 14+, per
+  [CMake's 3.28 release notes](https://cmake.org/cmake/help/latest/release/3.28.html))
+  paired with a Ninja new enough for its dyndep-based module scanning.
+  This is the option that actually ends the chase instead of postponing
+  it. It's also a materially bigger change than anything done across
+  three rounds so far - it needs a CI step installing a newer CMake and
+  likely `-DCMAKE_MAKE_PROGRAM=` pointed at a matching Ninja, and there's
+  no way to know from this sandbox whether AGP's external native build
+  integration (its own incremental-build and IDE-sync metadata generation
+  layered on top of raw CMake/Ninja) actually tolerates a `CXX_MODULES`
+  file set cleanly, since that combination is unusual enough that it
+  isn't something to assume works without a real test build. Worth
+  attempting deliberately, in its own change, with room to fall back -
+  not as a rushed reaction to a fourth CI failure.
+- **Fall back to the last Maven release, `6.4`.** Still real, still
+  confirmed-buildable (`LSPLANT_GIT_TAG=6.4`), still predates Android 16
+  ART support entirely. A legitimate choice if a build that's certain to
+  work matters more than Android 16 coverage for a while.
+- **Replace LSPlant with a different ART-hooking library.** Deliberately
+  listed last. This project already moved off YAHFA once, specifically
+  because of an Android-version-support gap (see [What
+  changed](#what-changed-from-the-original)) - trading one hooking
+  library's problem for a different library's different problem, without
+  first exhausting the cheaper options above, would be repeating that
+  same mistake in the opposite direction.
+
+Nothing here needs deciding today - the search loop keeps working right
+now, and the Android-16-floor warning added this round means it'll say so
+loudly, in the build log, the moment it stops being enough.
+
 ## Project layout
 
 ```
@@ -642,4 +892,3 @@ hookdex/      Bridge.java - three `native` method stubs, no logic, no dependenci
 flashable_module/   module.prop, customize.sh, sepolicy.rule, webroot/ (WebUI)
 package.sh    Builds both Gradle modules and assembles dist/disable_hdr.zip
 ```
->>>>>>> 16e6d29 (Upload module files)

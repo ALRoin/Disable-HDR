@@ -115,6 +115,29 @@ include(FetchContent)
 # next year, this finds the correct answer either way without anyone
 # needing to touch this file.
 # -----------------------------------------------------------------------
+# 2026-08-08 update - the search loop above was correct but the check it
+# ran at each candidate commit wasn't: it only looked for a *declaration*
+# ("module lsplant;"), so it walked straight past a run of commits whose
+# lsplant.cc merely *imports* another already-modularized component
+# ("import dex_builder;" at lsplant.cc:15 - LSPosed/DexBuilder is a real,
+# separate LSPosed-org repo LSPlant vendors) and stopped there, judging it
+# "clean". It wasn't - the next CI run failed with "module 'dex_builder'
+# not found" instead of "module 'lsplant' not found", same underlying
+# cause. The search loop's own commit-by-commit trail (visible in that
+# run's log, since it never got as far as printing this file's own
+# message(STATUS ...) lines - see README.md for why) doubled as a
+# byproduct as a much better-dated history than anything found by web
+# search alone, and pinpointed the actual origin precisely for the first
+# time: LSPosed/LSPlant@0110cf7, "upgrade to ndk 29 an use module
+# partition" - a deliberate toolchain upgrade on LSPlant's side, not a
+# transient regression, so this boundary is likely permanent going
+# forward. The fix is the REGEX two blocks below (now matches "import x;"
+# and "export import x;" too, not just "module x;" / "export module
+# x;") - see README.md for the full trail, why "6.4" and a CMake-upgrade
+# path are the two real long-term alternatives to keeping this search
+# loop indefinitely, and what was investigated in response to "is there a
+# different way to do this entirely".
+# -----------------------------------------------------------------------
 set(LSPLANT_GIT_TAG "" CACHE STRING "Exact LSPlant git tag/branch/commit to build. Empty (default) auto-resolves by searching master's history instead - see the comments above. Set this once you've verified a specific ref yourself; \"6.4\" is a confirmed-real, confirmed-buildable fallback that predates Android 16 ART support (see README.md).")
 set(LSPLANT_MAX_SEARCH_COMMITS "400" CACHE STRING "Only used when LSPLANT_GIT_TAG is empty. Auto-resolve walks back from origin/master's tip through at most this many commits looking for the newest one whose lsplant.cc doesn't use C++20 modules. LSPlant's whole history is a few hundred commits (see README.md), so 400 comfortably covers all of it; raise it only if that stops being true.")
 
@@ -196,10 +219,23 @@ else()
         )
         list(FILTER LSPLANT_CANDIDATE_SOURCES EXCLUDE REGEX "/test/")
 
+        # Three statement shapes, not one: a self-declaration ("module x;" /
+        # "export module x;", the lsplant.cc case from 2026-08-06), a
+        # named-module import ("import x;", the lsplant.cc:15 "import
+        # dex_builder;" case from 2026-08-07 - LSPosed/DexBuilder is a real,
+        # separate LSPosed-org repo (github.com/LSPosed/DexBuilder,
+        # LOCAL_MODULE "dex_builder" in its own Android.mk) that LSPlant
+        # vendors, and this commit range imports it as a module instead of
+        # the traditional submodule inclusion older commits use), and
+        # "export import x;" (re-exporting an import from within a module
+        # interface - not observed yet, but the same construct family and
+        # cheap to cover now rather than after a third CI round). All three
+        # are equally unbuildable here for the same underlying reason - see
+        # the comment above LSPLANT_GIT_TAG.
         set(LSPLANT_CANDIDATE_HAS_MODULES FALSE)
         foreach(lsplant_candidate_src_file ${LSPLANT_CANDIDATE_SOURCES})
             file(STRINGS "${lsplant_candidate_src_file}" LSPLANT_CANDIDATE_MODULE_MATCH
-                 REGEX "^ *(export +)?module +[A-Za-z_][A-Za-z0-9_.]* *;")
+                 REGEX "^ *(export +)?(module|import) +[A-Za-z_][A-Za-z0-9_.]* *;")
             if(LSPLANT_CANDIDATE_MODULE_MATCH)
                 set(LSPLANT_CANDIDATE_HAS_MODULES TRUE)
                 break()
@@ -229,6 +265,44 @@ else()
     endif()
     # LSPLANT_RESOLVED_SHA is already checked out - the loop's last
     # iteration (the one that broke out of it) left the working tree there.
+
+    # -------------------------------------------------------------------
+    # 2026-08-07, second finding same day: the search above only checked
+    # for C++20 modules, not for *which* Android versions the resolved
+    # commit can actually hook. LSPosed/LSPlant@16205e71aa3f028a729b00ed4aafd86793ea94f7
+    # ("Hook ReinitializeMethodsCode on A16+ (#158)", 2025-07-13) is the
+    # first commit known to add Android-16-specific ART hooking - see
+    # README.md's "Build fix, part 3" for the full trail. If a modules-free
+    # commit can only be found at or before that point, the resolved build
+    # will compile fine and then likely mishandle Android 16 at runtime -
+    # exactly the silent failure mode this whole vendor-from-source
+    # approach was meant to avoid in the first place (see the 2026-08-06
+    # comment above about why pinning to the old "6.4" tag alone isn't
+    # enough). This can't be a FATAL_ERROR - unlike the modules check, a
+    # commit predating Android 16 support still *builds and installs*, so
+    # failing outright would be strictly worse than warning - but it needs
+    # to be loud, because "builds fine, quietly wrong ART offsets" is far
+    # harder to notice than a build failure.
+    # -------------------------------------------------------------------
+    set(LSPLANT_ANDROID16_FLOOR_SHA "16205e71aa3f028a729b00ed4aafd86793ea94f7")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" merge-base --is-ancestor
+                ${LSPLANT_RESOLVED_SHA} ${LSPLANT_ANDROID16_FLOOR_SHA}
+        WORKING_DIRECTORY "${lsplant_src_SOURCE_DIR}"
+        RESULT_VARIABLE LSPLANT_RESOLVED_PREDATES_A16
+    )
+    if(LSPLANT_RESOLVED_PREDATES_A16 EQUAL 0)
+        message(WARNING
+            "LSPlant: the resolved commit ${LSPLANT_RESOLVED_SHA} is at or "
+            "before LSPosed/LSPlant@${LSPLANT_ANDROID16_FLOOR_SHA} (2025-07-13, "
+            "the first known Android-16 ART hook) - this build likely does "
+            "NOT have working Android 16 support, even though it compiled "
+            "successfully. LSPlant's C++20-modules adoption apparently goes "
+            "back further than this search reached. This is not fatal - the "
+            "build continues - but check README.md's \"Build fix, part 3\" "
+            "before relying on this build against Android 16 hooks "
+            "specifically.")
+    endif()
 endif()
 
 file(GLOB_RECURSE LSPLANT_SOURCES CONFIGURE_DEPENDS
@@ -247,31 +321,32 @@ endif()
 
 # -----------------------------------------------------------------------
 # Guardrail: refuse, loudly, at configure time, if any fetched LSPlant
-# source turns out to be a C++20 module declaration - see the comments
-# above LSPLANT_GIT_TAG for why nothing in this toolchain can compile one.
-# In auto-resolve mode (the default) the search loop above already
+# source turns out to use C++20 modules - a self-declaration ("module x;"
+# / "export module x;"), a named-module import ("import x;"), or a
+# re-exported import ("export import x;") - see the comments above
+# LSPLANT_GIT_TAG for why nothing in this toolchain can compile any of
+# these. In auto-resolve mode (the default) the search loop above already
 # guarantees this can't fire - it only rechecks here for defense in depth
 # in case that logic ever has a bug. In manual-pin mode (LSPLANT_GIT_TAG
 # set), this is the *only* thing that catches a bad pin - there's no
 # search to fall back to, so this is what actually fires if you pin
 # straight into the modules-affected range by hand. Deliberately a simple
-# heuristic (does some line look like a bare "module x;" / "export module
-# x;" statement) rather than a real C++ parser - good enough to catch this
-# specific regression class, the same way check_self_contained.cmake's
-# readelf grep is good enough for its job without being a real ELF
-# library.
+# heuristic (does some line look like one of those statement shapes)
+# rather than a real C++ parser - good enough to catch this specific
+# regression class, the same way check_self_contained.cmake's readelf
+# grep is good enough for its job without being a real ELF library.
 # -----------------------------------------------------------------------
 foreach(lsplant_src_file ${LSPLANT_SOURCES})
     file(STRINGS "${lsplant_src_file}" LSPLANT_MODULE_DECL_MATCH
-         REGEX "^ *(export +)?module +[A-Za-z_][A-Za-z0-9_.]* *;")
+         REGEX "^ *(export +)?(module|import) +[A-Za-z_][A-Za-z0-9_.]* *;")
     if(LSPLANT_MODULE_DECL_MATCH)
         get_filename_component(LSPLANT_SRC_BASENAME "${lsplant_src_file}" NAME)
         message(FATAL_ERROR
-            "${LSPLANT_SRC_BASENAME} declares a C++20 module "
+            "${LSPLANT_SRC_BASENAME} uses C++20 modules "
             "(\"${LSPLANT_MODULE_DECL_MATCH}\") - this toolchain (CMake "
             "3.22.1, as bundled with the Android NDK / AGP's external "
-            "native build) cannot compile C++20 module implementation "
-            "units; see the comment above LSPLANT_GIT_TAG near the top of "
+            "native build) cannot compile a module declaration or a "
+            "named-module import; see the comment above LSPLANT_GIT_TAG near the top of "
             "this file. If you're seeing this in auto-resolve mode "
             "(LSPLANT_GIT_TAG empty), the search loop above has a bug - "
             "please report it. If you set LSPLANT_GIT_TAG manually, pick a "
