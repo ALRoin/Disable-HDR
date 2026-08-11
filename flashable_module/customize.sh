@@ -19,4 +19,12 @@ set_perm "$MODPATH/targets.txt" 0 0 0644
 # permissions beyond world-readable are needed for that.
 set_perm "$MODPATH/classes.dex" 0 0 0644
 
+# post-fs-data.sh is an optional, best-effort extra layer (see the long
+# comment at the top of that file for exactly what it does and its two
+# real caveats) - KernelSU/Magisk auto-run it by filename, but it still
+# needs the execute bit set explicitly like everything else here.
+if [ -f "$MODPATH/post-fs-data.sh" ]; then
+  set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
+fi
+
 ui_print "- Done. Force-stop or reopen target apps to activate (no reboot needed)."
